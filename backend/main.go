@@ -33,10 +33,14 @@ type TemperaturePoint struct {
 }
 
 type CloudPoint struct {
-	Time           string `json:"time"`
-	LowCloudCover  int    `json:"low_cloud_cover"`
-	MidCloudCover  int    `json:"mid_cloud_cover"`
-	HighCloudCover int    `json:"high_cloud_cover"`
+	Time        string       `json:"time"`
+	CloudLayers []CloudLayer `json:"cloud_layers"`
+}
+
+type CloudLayer struct {
+	HeightMeters int    `json:"height_meters"`
+	Coverage     int    `json:"coverage"`
+	Symbol       string `json:"symbol"`
 }
 
 func main() {

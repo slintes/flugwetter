@@ -63,6 +63,38 @@ canvas {
     max-height: 400px;
 }
 
+.chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 15px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    font-size: 0.9rem;
+}
+
+.chart-legend span {
+    background: white;
+    padding: 5px 10px;
+    border-radius: 15px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.chart-instructions {
+    text-align: center;
+    margin-top: 20px;
+    padding: 15px;
+    background: rgba(255,255,255,0.9);
+    border-radius: 10px;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.chart-instructions strong {
+    color: #2d3436;
+}
+
 .loading {
     text-align: center;
     background: rgba(255,255,255,0.9);

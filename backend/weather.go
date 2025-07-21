@@ -23,6 +23,48 @@ type WeatherAPIResponse struct {
 		WindDirection10m   []int     `json:"wind_direction_10m"`
 		Pressure           []float64 `json:"pressure_msl"`
 		RelativeHumidity2m []int     `json:"relative_humidity_2m"`
+
+		// hPa-based cloud cover data
+		CloudCover1000hPa []int `json:"cloud_cover_1000hPa"`
+		CloudCover975hPa  []int `json:"cloud_cover_975hPa"`
+		CloudCover950hPa  []int `json:"cloud_cover_950hPa"`
+		CloudCover925hPa  []int `json:"cloud_cover_925hPa"`
+		CloudCover900hPa  []int `json:"cloud_cover_900hPa"`
+		CloudCover850hPa  []int `json:"cloud_cover_850hPa"`
+		CloudCover800hPa  []int `json:"cloud_cover_800hPa"`
+		CloudCover700hPa  []int `json:"cloud_cover_700hPa"`
+		CloudCover600hPa  []int `json:"cloud_cover_600hPa"`
+		CloudCover500hPa  []int `json:"cloud_cover_500hPa"`
+		CloudCover400hPa  []int `json:"cloud_cover_400hPa"`
+		CloudCover300hPa  []int `json:"cloud_cover_300hPa"`
+		CloudCover250hPa  []int `json:"cloud_cover_250hPa"`
+		CloudCover200hPa  []int `json:"cloud_cover_200hPa"`
+		CloudCover150hPa  []int `json:"cloud_cover_150hPa"`
+		CloudCover100hPa  []int `json:"cloud_cover_100hPa"`
+		CloudCover70hPa   []int `json:"cloud_cover_70hPa"`
+		CloudCover50hPa   []int `json:"cloud_cover_50hPa"`
+		CloudCover30hPa   []int `json:"cloud_cover_30hPa"`
+
+		// Geopotential heights
+		GeopotentialHeight1000hPa []float64 `json:"geopotential_height_1000hPa"`
+		GeopotentialHeight975hPa  []float64 `json:"geopotential_height_975hPa"`
+		GeopotentialHeight950hPa  []float64 `json:"geopotential_height_950hPa"`
+		GeopotentialHeight925hPa  []float64 `json:"geopotential_height_925hPa"`
+		GeopotentialHeight900hPa  []float64 `json:"geopotential_height_900hPa"`
+		GeopotentialHeight850hPa  []float64 `json:"geopotential_height_850hPa"`
+		GeopotentialHeight800hPa  []float64 `json:"geopotential_height_800hPa"`
+		GeopotentialHeight700hPa  []float64 `json:"geopotential_height_700hPa"`
+		GeopotentialHeight600hPa  []float64 `json:"geopotential_height_600hPa"`
+		GeopotentialHeight500hPa  []float64 `json:"geopotential_height_500hPa"`
+		GeopotentialHeight400hPa  []float64 `json:"geopotential_height_400hPa"`
+		GeopotentialHeight300hPa  []float64 `json:"geopotential_height_300hPa"`
+		GeopotentialHeight250hPa  []float64 `json:"geopotential_height_250hPa"`
+		GeopotentialHeight200hPa  []float64 `json:"geopotential_height_200hPa"`
+		GeopotentialHeight150hPa  []float64 `json:"geopotential_height_150hPa"`
+		GeopotentialHeight100hPa  []float64 `json:"geopotential_height_100hPa"`
+		GeopotentialHeight70hPa   []float64 `json:"geopotential_height_70hPa"`
+		GeopotentialHeight50hPa   []float64 `json:"geopotential_height_50hPa"`
+		GeopotentialHeight30hPa   []float64 `json:"geopotential_height_30hPa"`
 	} `json:"hourly"`
 }
 
@@ -112,18 +154,93 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 			})
 		}
 
-		// Add cloud data
-		if i < len(apiResponse.Hourly.CloudCoverLow) &&
-			i < len(apiResponse.Hourly.CloudCoverMid) &&
-			i < len(apiResponse.Hourly.CloudCoverHigh) {
+		// Add cloud data - process all hPa levels
+		cloudLayers := processCloudLayers(apiResponse, i)
+		if len(cloudLayers) > 0 {
 			processed.CloudData = append(processed.CloudData, CloudPoint{
-				Time:           timeStr,
-				LowCloudCover:  apiResponse.Hourly.CloudCoverLow[i],
-				MidCloudCover:  apiResponse.Hourly.CloudCoverMid[i],
-				HighCloudCover: apiResponse.Hourly.CloudCoverHigh[i],
+				Time:        timeStr,
+				CloudLayers: cloudLayers,
 			})
 		}
 	}
 
 	return processed
+}
+
+// processCloudLayers extracts cloud cover data for all hPa levels and converts to layers with heights
+func processCloudLayers(apiResponse *WeatherAPIResponse, timeIndex int) []CloudLayer {
+	// Define pressure levels and their corresponding cloud cover and geopotential height data
+	pressureLevels := []struct {
+		CloudCover []int
+		GeoHeight  []float64
+	}{
+		{apiResponse.Hourly.CloudCover1000hPa, apiResponse.Hourly.GeopotentialHeight1000hPa},
+		{apiResponse.Hourly.CloudCover975hPa, apiResponse.Hourly.GeopotentialHeight975hPa},
+		{apiResponse.Hourly.CloudCover950hPa, apiResponse.Hourly.GeopotentialHeight950hPa},
+		{apiResponse.Hourly.CloudCover925hPa, apiResponse.Hourly.GeopotentialHeight925hPa},
+		{apiResponse.Hourly.CloudCover900hPa, apiResponse.Hourly.GeopotentialHeight900hPa},
+		{apiResponse.Hourly.CloudCover850hPa, apiResponse.Hourly.GeopotentialHeight850hPa},
+		{apiResponse.Hourly.CloudCover800hPa, apiResponse.Hourly.GeopotentialHeight800hPa},
+		{apiResponse.Hourly.CloudCover700hPa, apiResponse.Hourly.GeopotentialHeight700hPa},
+		{apiResponse.Hourly.CloudCover600hPa, apiResponse.Hourly.GeopotentialHeight600hPa},
+		{apiResponse.Hourly.CloudCover500hPa, apiResponse.Hourly.GeopotentialHeight500hPa},
+		{apiResponse.Hourly.CloudCover400hPa, apiResponse.Hourly.GeopotentialHeight400hPa},
+		{apiResponse.Hourly.CloudCover300hPa, apiResponse.Hourly.GeopotentialHeight300hPa},
+		{apiResponse.Hourly.CloudCover250hPa, apiResponse.Hourly.GeopotentialHeight250hPa},
+		{apiResponse.Hourly.CloudCover200hPa, apiResponse.Hourly.GeopotentialHeight200hPa},
+		{apiResponse.Hourly.CloudCover150hPa, apiResponse.Hourly.GeopotentialHeight150hPa},
+		{apiResponse.Hourly.CloudCover100hPa, apiResponse.Hourly.GeopotentialHeight100hPa},
+		{apiResponse.Hourly.CloudCover70hPa, apiResponse.Hourly.GeopotentialHeight70hPa},
+		{apiResponse.Hourly.CloudCover50hPa, apiResponse.Hourly.GeopotentialHeight50hPa},
+		{apiResponse.Hourly.CloudCover30hPa, apiResponse.Hourly.GeopotentialHeight30hPa},
+	}
+
+	var layers []CloudLayer
+
+	for _, level := range pressureLevels {
+		// Check if data is available for this time index
+		if timeIndex < len(level.CloudCover) && timeIndex < len(level.GeoHeight) {
+			coverage := level.CloudCover[timeIndex]
+			geoHeight := level.GeoHeight[timeIndex]
+
+			// Only include layers with some cloud coverage
+			if coverage > 0 {
+				// Convert geopotential height to meters (geopotential height is already in meters)
+				heightMeters := int(geoHeight)
+
+				// Determine cloud symbol based on coverage (divided into eighths)
+				symbol := getCloudSymbol(coverage)
+
+				layers = append(layers, CloudLayer{
+					HeightMeters: heightMeters,
+					Coverage:     coverage,
+					Symbol:       symbol,
+				})
+			}
+		}
+	}
+
+	return layers
+}
+
+// getCloudSymbol returns appropriate cloud symbol based on coverage percentage
+func getCloudSymbol(coverage int) string {
+	switch {
+	case coverage <= 12:
+		return "☀" // Clear (0-12%)
+	case coverage <= 25:
+		return "🌤" // Partly sunny (13-25%)
+	case coverage <= 37:
+		return "⛅" // Partly cloudy (26-37%)
+	case coverage <= 50:
+		return "🌥" // Mostly cloudy (38-50%)
+	case coverage <= 62:
+		return "☁" // Cloudy (51-62%)
+	case coverage <= 75:
+		return "🌫" // Very cloudy (63-75%)
+	case coverage <= 87:
+		return "☁☁" // Heavy clouds (76-87%)
+	default:
+		return "☁☁☁" // Overcast (88-100%)
+	}
 }
