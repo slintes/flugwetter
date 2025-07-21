@@ -260,9 +260,9 @@ func getCloudSymbol(coverage int) string {
 	case coverage <= 12:
 		return "☀" // Clear (0-12%)
 	case coverage <= 25:
-		return "🌤" // Partly sunny (13-25%)
+		return "⛅" // Partly sunny (13-25%)
 	case coverage <= 37:
-		return "⛅" // Partly cloudy (26-37%)
+		return "🌤" // Partly cloudy (26-37%)
 	case coverage <= 50:
 		return "🌥" // Mostly cloudy (38-50%)
 	case coverage <= 62:
