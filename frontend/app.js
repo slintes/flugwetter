@@ -229,7 +229,7 @@ function initializeCharts() {
                                 const alpha = 0.1 + (point.coverage / 100 * 0.9);
                                 
                                 // Calculate base size for the cloud (slightly larger for a nicer appearance)
-                                const baseSize = 10;
+                                const baseSize = 9;
                                 
                                 // Draw a more realistic cloud shape with transparency based on coverage
                                 const x = element.x;
@@ -317,7 +317,18 @@ function initializeCharts() {
                 data: [],
                 backgroundColor: 'transparent',
                 borderColor: 'transparent',
-                pointRadius: 0 // Hide points, we'll show symbols instead
+                pointRadius: 0, // Hide points, we'll show symbols instead
+                yAxisID: 'y'
+            }, {
+                type: 'line',
+                label: 'Visibility (km)',
+                data: [],
+                borderColor: '#cb2e12',
+                backgroundColor: 'rgba(108, 92, 231, 0.1)',
+                borderWidth: 3,
+                fill: false,
+                tension: 0.4,
+                yAxisID: 'y1'
             }]
         },
         options: {
@@ -345,6 +356,26 @@ function initializeCharts() {
                     ticks: {
                         callback: function(value) {
                             return value + 'ft';
+                        }
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    min: 0,
+                    max: 80, // Maximum visibility of 80km
+                    grid: {
+                        drawOnChartArea: false, // Don't draw grid lines for second axis
+                    },
+                    title: {
+                        display: true,
+                        text: 'Visibility (km)',
+                        font: { size: 14, weight: 'bold' }
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return value + ' km';
                         }
                     }
                 },
@@ -398,7 +429,14 @@ function initializeCharts() {
             },
             plugins: {
                 legend: {
-                    display: false // Hide legend since we show symbols
+                    display: true,
+                    position: 'top',
+                    maxHeight: 50,
+                    fullSize: false,
+                    labels: {
+                        boxWidth: 15,
+                        padding: 10
+                    }
                 },
                 tooltip: {
                     callbacks: {
@@ -407,7 +445,29 @@ function initializeCharts() {
                         },
                         label: function(context) {
                             const point = context.raw;
-                            return `Height: ${point.y}ft, Coverage: ${point.coverage}%`;
+                            if (context.dataset.label === 'Cloud Layers') {
+                                // Find visibility data at the same time point
+                                let visibilityValue = "N/A";
+                                
+                                // Get the visibility dataset
+                                const visibilityDataset = context.chart.data.datasets.find(dataset => 
+                                    dataset.label === 'Visibility (km)'
+                                );
+                                
+                                if (visibilityDataset) {
+                                    // Find the visibility data point with the same x-value (time)
+                                    const visibilityPoint = visibilityDataset.data.find(dataPoint => 
+                                        dataPoint.x === point.x
+                                    );
+                                    
+                                    if (visibilityPoint && visibilityPoint.y !== undefined) {
+                                        visibilityValue = visibilityPoint.y.toFixed(1) + " km";
+                                    }
+                                }
+                                
+                                return `Height: ${point.y}ft, Coverage: ${point.coverage}%, Visibility: ${visibilityValue}`;
+                            }
+                            return '';
                         }
                     }
                 }
@@ -900,23 +960,36 @@ function updateCharts(data) {
     
     temperatureChart.update();
     
-    // Update cloud chart with scatter data
+    // Update cloud chart with scatter data and visibility data
     const scatterData = [];
+    const visibilityData = [];
     
     data.cloud_data.forEach(timePoint => {
         const timeValue = new Date(timePoint.time).getTime();
         
-        timePoint.cloud_layers.forEach(layer => {
-            scatterData.push({
-                x: timeValue,
-                y: layer.height_feet,
-                coverage: layer.coverage,
-                symbol: layer.symbol
+        // Process cloud layers
+        if (timePoint.cloud_layers) {
+            timePoint.cloud_layers.forEach(layer => {
+                scatterData.push({
+                    x: timeValue,
+                    y: layer.height_feet,
+                    coverage: layer.coverage,
+                    symbol: layer.symbol
+                });
             });
-        });
+        }
+
+        // The visibility is already in kilometers
+        if (timePoint.visibility) {
+            visibilityData.push({
+                x: timeValue,
+                y: timePoint.visibility
+            });
+        }
     });
     
     cloudChart.data.datasets[0].data = scatterData;
+    cloudChart.data.datasets[1].data = visibilityData;
     cloudChart.update();
     
     // Update surface wind chart with scatter data and line data

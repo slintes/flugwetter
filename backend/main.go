@@ -40,6 +40,7 @@ type TemperaturePoint struct {
 type CloudPoint struct {
 	Time        string       `json:"time"`
 	CloudLayers []CloudLayer `json:"cloud_layers"`
+	Visibility  float64      `json:"visibility"`
 }
 
 type CloudLayer struct {

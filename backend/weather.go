@@ -29,6 +29,7 @@ type WeatherAPIResponse struct {
 		WindDirection80m         []int     `json:"wind_direction_80m"`
 		Pressure                 []float64 `json:"pressure_msl"`
 		RelativeHumidity2m       []int     `json:"relative_humidity_2m"`
+		Visibility               []float64 `json:"visibility"`
 
 		// hPa-based wind data
 		WindSpeed1000hPa []float64 `json:"wind_speed_1000hPa"`
@@ -188,12 +189,21 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 
 		// Add cloud data - process all hPa levels
 		cloudLayers := processCloudLayers(apiResponse, i)
-		if len(cloudLayers) > 0 {
-			processed.CloudData = append(processed.CloudData, CloudPoint{
-				Time:        timeStr,
-				CloudLayers: cloudLayers,
-			})
+
+		// Get visibility data if available
+		var visibility float64
+		if i < len(apiResponse.Hourly.Visibility) {
+			visibility = apiResponse.Hourly.Visibility[i]
+			// Convert visibility from meters to kilometers
+			visibility = visibility / 1000
 		}
+
+		// Always include a CloudPoint with visibility data, even if there are no cloud layers
+		processed.CloudData = append(processed.CloudData, CloudPoint{
+			Time:        timeStr,
+			CloudLayers: cloudLayers,
+			Visibility:  visibility,
+		})
 
 		// Add surface wind data (10m and 80m)
 		surfaceWindLayers := processSurfaceWindLayers(apiResponse, i)
