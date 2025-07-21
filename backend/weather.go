@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 )
@@ -383,4 +384,44 @@ func getWindSymbol(speedKnots float64, direction int) string {
 	}
 	// Return speed for barb calculation in frontend
 	return "barb"
+}
+
+// GetCloudBase calculates the cloud base (lowest cloud coverage >= 50%) for a given time
+// Returns the height in feet, or -1 if no cloud base found
+func GetCloudBase(timeStr string) (int, error) {
+	data, err := GetWeatherData()
+	if err != nil {
+		return -1, fmt.Errorf("failed to get weather data: %w", err)
+	}
+
+	// Find the cloud data for the specified time
+	var cloudPoint *CloudPoint
+	for _, cp := range data.CloudData {
+		if cp.Time == timeStr {
+			cloudPoint = &cp
+			break
+		}
+	}
+
+	if cloudPoint == nil {
+		return -1, fmt.Errorf("no cloud data found for time: %s", timeStr)
+	}
+
+	// Sort cloud layers by height (lowest first)
+	layers := make([]CloudLayer, len(cloudPoint.CloudLayers))
+	copy(layers, cloudPoint.CloudLayers)
+
+	sort.Slice(layers, func(i, j int) bool {
+		return layers[i].HeightFeet < layers[j].HeightFeet
+	})
+
+	// Find the lowest layer with coverage >= 50%
+	for _, layer := range layers {
+		if layer.Coverage >= 50 {
+			return layer.HeightFeet, nil
+		}
+	}
+
+	// No cloud base found (no layer with >= 50% coverage)
+	return -1, nil
 }
