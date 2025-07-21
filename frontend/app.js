@@ -226,20 +226,15 @@ function initializeCharts() {
                                 element.y >= chartArea.top && element.y <= chartArea.bottom) {
                                 
                                 // Calculate transparency based on coverage (0% = transparent, 100% = opaque)
-                                const alpha = point.coverage / 100;
+                                const alpha = 0.1 + (point.coverage / 100 * 0.9);
                                 
-                                // Set up text rendering (200% scale: 18px -> 36px)
-                                ctx.font = '36px Arial';
+                                // Set up text rendering
+                                ctx.font = '30px Sans';
                                 ctx.textAlign = 'center';
                                 ctx.textBaseline = 'middle';
                                 
-                                // Add a slight background to make symbols more visible (scaled for larger symbol)
-                                const textWidth = ctx.measureText('☁').width;
-                                ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(0.9, alpha + 0.2)})`;
-                                ctx.fillRect(element.x - textWidth/2 - 6, element.y - 18, textWidth + 12, 36);
-                                
                                 // Draw the cloud symbol with transparency based on coverage
-                                ctx.fillStyle = `rgba(51, 51, 51, ${alpha})`;
+                                ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
                                 ctx.fillText('☁', element.x, element.y);
                             }
                         }
