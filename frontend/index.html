@@ -12,50 +12,33 @@
 <body>
     <div class="container">
         <header>
-            <h1>🛩️ Flugwetter</h1>
+            <h1>🛩️ Flugwetter EDDG / FMO</h1>
             <p>Aviation Weather Forecast</p>
         </header>
 
         <main>
-            <div class="chart-container">
-                <h2>Cloud Cover at Different Altitudes</h2>
-                <div class="chart-legend">
-                    <span>☁ Cloud Symbol Opacity:</span>
-                    <span>0% coverage = transparent</span>
-                    <span>50% coverage = semi-transparent</span>
-                    <span>100% coverage = opaque</span>
+            <div class="charts-grid">
+                <!-- Top Row -->
+                <div class="chart-container">
+                    <h2>Temperature, Dew Point & Precipitation Forecast</h2>
+                    <canvas id="temperatureChart"></canvas>
                 </div>
-                <canvas id="cloudChart"></canvas>
-            </div>
 
-            <div class="chart-container">
-                <h2>Temperature, Dew Point & Precipitation Forecast</h2>
-                <canvas id="temperatureChart"></canvas>
-            </div>
-
-            <div class="chart-container">
-                <h2>Surface Wind Speed, Gusts & Direction (10m & 80m)</h2>
-                <div class="chart-legend">
-                    <span>Wind Barbs:</span>
-                    <span>○ Calm (0-3 kn)</span>
-                    <span>| Half barb = 5 kn</span>
-                    <span>|— Full barb = 10 kn</span>
-                    <span>▲ Pennant = 50 kn</span>
-                    <span>↑ Points FROM wind direction</span>
+                <div class="chart-container">
+                    <h2>Cloud Cover at Different Altitudes</h2>
+                    <canvas id="cloudChart"></canvas>
                 </div>
-                <canvas id="surfaceWindChart"></canvas>
-            </div>
 
-            <div class="chart-container">
-                <h2>Wind Speed and Direction at Different Altitudes</h2>
-                <div class="chart-legend">
-                    <span>○ Calm (0-3 kn)</span>
-                    <span>| Half barb = 5 kn</span>
-                    <span>|— Full barb = 10 kn</span>
-                    <span>▲ Pennant = 50 kn</span>
-                    <span>↑ Points FROM wind direction</span>
+                <!-- Bottom Row -->
+                <div class="chart-container">
+                    <h2>Surface Wind Speed, Gusts & Direction (10m & 80m)</h2>
+                    <canvas id="surfaceWindChart"></canvas>
                 </div>
-                <canvas id="windChart"></canvas>
+
+                <div class="chart-container">
+                    <h2>Wind Speed and Direction at Different Altitudes</h2>
+                    <canvas id="windChart"></canvas>
+                </div>
             </div>
 
             <div class="loading" id="loading">
@@ -68,6 +51,8 @@
             </div>
 
             <div class="chart-instructions">
+                <strong>Chart Layout:</strong> 2×2 Grid - Temperature (top-left), Cloud Cover (top-right), Surface Wind (bottom-left), Altitude Wind (bottom-right)
+                <br>
                 <strong>Chart Interaction:</strong> Showing next 24 hours • Use mouse wheel to zoom in/out • Click and drag to pan horizontally • All 4 charts are synchronized
                 <br>
                 <button onclick="resetZoom()" style="margin-top: 10px; padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">Show All Data</button>

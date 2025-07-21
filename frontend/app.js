@@ -138,6 +138,8 @@ function initializeCharts() {
                     type: 'time',
                     time: {
                         parser: 'YYYY-MM-DDTHH:mm',
+                        unit: 'hour',
+                        stepSize: 3,
                         displayFormats: {
                             hour: 'MMM dd HH:mm'
                         }
@@ -145,15 +147,37 @@ function initializeCharts() {
                     min: new Date(),
                     max: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
                     grid: {
-                        color: 'rgba(0,0,0,0.1)'
+                        color: 'rgba(0,0,0,0.3)'
                     },
                     title: {
-                        display: true,
-                        text: 'Time',
-                        font: { size: 14, weight: 'bold' }
+                        display: false
                     },
                     ticks: {
-                        maxTicksLimit: 8,
+                        callback: function(value, index, values) {
+                            const date = new Date(value);
+                            // Show tick if it's at 0, 3, 6, 9, 12, 15, 18, 21 hours
+                            if (date.getHours() % 3 === 0) {
+                                if (date.getHours() === 0) {
+                                    // For midnight, show date and time
+                                    return date.toLocaleDateString('en-US', { 
+                                        month: 'short', 
+                                        day: 'numeric' 
+                                    }) + '\n' + date.toLocaleTimeString('en-US', { 
+                                        hour: '2-digit', 
+                                        minute: '2-digit',
+                                        hour12: false 
+                                    });
+                                } else {
+                                    // For other hours, show time only
+                                    return date.toLocaleTimeString('en-US', { 
+                                        hour: '2-digit', 
+                                        minute: '2-digit',
+                                        hour12: false 
+                                    });
+                                }
+                            }
+                            return '';
+                        },
                         maxRotation: 45
                     }
                 }
@@ -161,7 +185,13 @@ function initializeCharts() {
             plugins: {
                 legend: {
                     display: true,
-                    position: 'top'
+                    position: 'top',
+                    maxHeight: 50,
+                    fullSize: false,
+                    labels: {
+                        boxWidth: 15,
+                        padding: 10
+                    }
                 }
             }
         }
@@ -269,6 +299,8 @@ function initializeCharts() {
                     type: 'time',
                     time: {
                         parser: 'YYYY-MM-DDTHH:mm',
+                        unit: 'hour',
+                        stepSize: 3,
                         displayFormats: {
                             hour: 'MMM dd HH:mm'
                         }
@@ -276,15 +308,37 @@ function initializeCharts() {
                     min: new Date(),
                     max: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
                     grid: {
-                        color: 'rgba(0,0,0,0.1)'
+                        color: 'rgba(0,0,0,0.3)'
                     },
                     title: {
-                        display: true,
-                        text: 'Time',
-                        font: { size: 14, weight: 'bold' }
+                        display: false
                     },
                     ticks: {
-                        maxTicksLimit: 8,
+                        callback: function(value, index, values) {
+                            const date = new Date(value);
+                            // Show tick if it's at 0, 3, 6, 9, 12, 15, 18, 21 hours
+                            if (date.getHours() % 3 === 0) {
+                                if (date.getHours() === 0) {
+                                    // For midnight, show date and time
+                                    return date.toLocaleDateString('en-US', { 
+                                        month: 'short', 
+                                        day: 'numeric' 
+                                    }) + '\n' + date.toLocaleTimeString('en-US', { 
+                                        hour: '2-digit', 
+                                        minute: '2-digit',
+                                        hour12: false 
+                                    });
+                                } else {
+                                    // For other hours, show time only
+                                    return date.toLocaleTimeString('en-US', { 
+                                        hour: '2-digit', 
+                                        minute: '2-digit',
+                                        hour12: false 
+                                    });
+                                }
+                            }
+                            return '';
+                        },
                         maxRotation: 45
                     }
                 }
@@ -431,6 +485,8 @@ function initializeCharts() {
                     type: 'time',
                     time: {
                         parser: 'YYYY-MM-DDTHH:mm',
+                        unit: 'hour',
+                        stepSize: 3,
                         displayFormats: {
                             hour: 'MMM dd HH:mm'
                         }
@@ -438,15 +494,37 @@ function initializeCharts() {
                     min: new Date(),
                     max: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
                     grid: {
-                        color: 'rgba(0,0,0,0.1)'
+                        color: 'rgba(0,0,0,0.3)'
                     },
                     title: {
-                        display: true,
-                        text: 'Time',
-                        font: { size: 14, weight: 'bold' }
+                        display: false
                     },
                     ticks: {
-                        maxTicksLimit: 8,
+                        callback: function(value, index, values) {
+                            const date = new Date(value);
+                            // Show tick if it's at 0, 3, 6, 9, 12, 15, 18, 21 hours
+                            if (date.getHours() % 3 === 0) {
+                                if (date.getHours() === 0) {
+                                    // For midnight, show date and time
+                                    return date.toLocaleDateString('en-US', { 
+                                        month: 'short', 
+                                        day: 'numeric' 
+                                    }) + '\n' + date.toLocaleTimeString('en-US', { 
+                                        hour: '2-digit', 
+                                        minute: '2-digit',
+                                        hour12: false 
+                                    });
+                                } else {
+                                    // For other hours, show time only
+                                    return date.toLocaleTimeString('en-US', { 
+                                        hour: '2-digit', 
+                                        minute: '2-digit',
+                                        hour12: false 
+                                    });
+                                }
+                            }
+                            return '';
+                        },
                         maxRotation: 45
                     }
                 }
@@ -454,7 +532,13 @@ function initializeCharts() {
             plugins: {
                 legend: {
                     display: true,
-                    position: 'top'
+                    position: 'top',
+                    maxHeight: 50,
+                    fullSize: false,
+                    labels: {
+                        boxWidth: 15,
+                        padding: 10
+                    }
                 },
                 tooltip: {
                     callbacks: {
@@ -647,6 +731,8 @@ function initializeCharts() {
                     type: 'time',
                     time: {
                         parser: 'YYYY-MM-DDTHH:mm',
+                        unit: 'hour',
+                        stepSize: 3,
                         displayFormats: {
                             hour: 'MMM dd HH:mm'
                         }
@@ -654,15 +740,37 @@ function initializeCharts() {
                     min: new Date(),
                     max: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
                     grid: {
-                        color: 'rgba(0,0,0,0.1)'
+                        color: 'rgba(0,0,0,0.3)'
                     },
                     title: {
-                        display: true,
-                        text: 'Time',
-                        font: { size: 14, weight: 'bold' }
+                        display: false
                     },
                     ticks: {
-                        maxTicksLimit: 8,
+                        callback: function(value, index, values) {
+                            const date = new Date(value);
+                            // Show tick if it's at 0, 3, 6, 9, 12, 15, 18, 21 hours
+                            if (date.getHours() % 3 === 0) {
+                                if (date.getHours() === 0) {
+                                    // For midnight, show date and time
+                                    return date.toLocaleDateString('en-US', { 
+                                        month: 'short', 
+                                        day: 'numeric' 
+                                    }) + '\n' + date.toLocaleTimeString('en-US', { 
+                                        hour: '2-digit', 
+                                        minute: '2-digit',
+                                        hour12: false 
+                                    });
+                                } else {
+                                    // For other hours, show time only
+                                    return date.toLocaleTimeString('en-US', { 
+                                        hour: '2-digit', 
+                                        minute: '2-digit',
+                                        hour12: false 
+                                    });
+                                }
+                            }
+                            return '';
+                        },
                         maxRotation: 45
                     }
                 }
