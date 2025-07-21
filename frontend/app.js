@@ -228,14 +228,76 @@ function initializeCharts() {
                                 // Calculate transparency based on coverage (0% = transparent, 100% = opaque)
                                 const alpha = 0.1 + (point.coverage / 100 * 0.9);
                                 
-                                // Set up text rendering
-                                ctx.font = '30px Sans';
-                                ctx.textAlign = 'center';
-                                ctx.textBaseline = 'middle';
+                                // Calculate base size for the cloud (slightly larger for a nicer appearance)
+                                const baseSize = 10;
                                 
-                                // Draw the cloud symbol with transparency based on coverage
+                                // Draw a more realistic cloud shape with transparency based on coverage
+                                const x = element.x;
+                                const y = element.y;
+                                
+                                // Add a subtle white glow/border effect for depth
+                                ctx.beginPath();
+                                
+                                // Start at the bottom-left of the cloud
+                                ctx.moveTo(x - baseSize * 1.1, y + baseSize * 0.2);
+                                
+                                // Bottom curve
+                                ctx.bezierCurveTo(
+                                    x - baseSize * 0.8, y + baseSize * 0.5,
+                                    x - baseSize * 0.3, y + baseSize * 0.6,
+                                    x, y + baseSize * 0.4
+                                );
+                                
+                                // Bottom-right curve
+                                ctx.bezierCurveTo(
+                                    x + baseSize * 0.4, y + baseSize * 0.6,
+                                    x + baseSize * 0.9, y + baseSize * 0.5,
+                                    x + baseSize * 1.1, y + baseSize * 0.2
+                                );
+                                
+                                // Right side curve
+                                ctx.bezierCurveTo(
+                                    x + baseSize * 1.3, y,
+                                    x + baseSize * 1.2, y - baseSize * 0.4,
+                                    x + baseSize * 0.9, y - baseSize * 0.6
+                                );
+                                
+                                // Top-right bump
+                                ctx.bezierCurveTo(
+                                    x + baseSize * 0.7, y - baseSize * 1.0,
+                                    x + baseSize * 0.4, y - baseSize * 1.2,
+                                    x + baseSize * 0.1, y - baseSize * 0.9
+                                );
+                                
+                                // Top-middle bump
+                                ctx.bezierCurveTo(
+                                    x - baseSize * 0.1, y - baseSize * 1.3,
+                                    x - baseSize * 0.4, y - baseSize * 1.2,
+                                    x - baseSize * 0.6, y - baseSize * 0.9
+                                );
+                                
+                                // Top-left bump
+                                ctx.bezierCurveTo(
+                                    x - baseSize * 0.8, y - baseSize * 1.1,
+                                    x - baseSize * 1.0, y - baseSize * 0.8,
+                                    x - baseSize * 1.2, y - baseSize * 0.5
+                                );
+                                
+                                // Left side curve back to start
+                                ctx.bezierCurveTo(
+                                    x - baseSize * 1.3, y - baseSize * 0.2,
+                                    x - baseSize * 1.3, y,
+                                    x - baseSize * 1.1, y + baseSize * 0.2
+                                );
+                                
+                                // Create a subtle white glow/border effect
+                                ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.7})`;
+                                ctx.lineWidth = 1.5;
+                                ctx.stroke();
+                                
+                                // Fill with the main cloud color
                                 ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
-                                ctx.fillText('☁', element.x, element.y);
+                                ctx.fill();
                             }
                         }
                     });
