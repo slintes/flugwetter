@@ -1,5 +1,6 @@
 let temperatureChart;
 let cloudChart;
+let surfaceWindChart;
 let windChart;
 
 // Initialize charts when page loads
@@ -25,8 +26,27 @@ function initializeCharts() {
                 borderColor: '#e17055',
                 backgroundColor: 'rgba(225, 112, 85, 0.1)',
                 borderWidth: 3,
+                fill: false,
+                tension: 0.4,
+                yAxisID: 'y'
+            }, {
+                label: '2m Dew Point (°C)',
+                data: [],
+                borderColor: '#00b894',
+                backgroundColor: 'rgba(0, 184, 148, 0.1)',
+                borderWidth: 3,
+                fill: false,
+                tension: 0.4,
+                yAxisID: 'y'
+            }, {
+                label: 'Precipitation (mm)',
+                data: [],
+                borderColor: '#0984e3',
+                backgroundColor: 'rgba(9, 132, 227, 0.3)',
+                borderWidth: 2,
                 fill: true,
-                tension: 0.4
+                tension: 0.4,
+                yAxisID: 'y1'
             }]
         },
         options: {
@@ -39,6 +59,9 @@ function initializeCharts() {
             events: ['mousedown', 'mousemove', 'mouseup', 'click', 'mouseover', 'mouseout', 'wheel'],
             scales: {
                 y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
                     beginAtZero: false,
                     grid: {
                         color: 'rgba(0,0,0,0.1)'
@@ -47,6 +70,25 @@ function initializeCharts() {
                         display: true,
                         text: 'Temperature (°C)',
                         font: { size: 14, weight: 'bold' }
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    beginAtZero: true,
+                    grid: {
+                        drawOnChartArea: false,
+                    },
+                    title: {
+                        display: true,
+                        text: 'Precipitation (mm)',
+                        font: { size: 14, weight: 'bold' }
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return value + ' mm';
+                        }
                     }
                 },
                 x: {
@@ -220,6 +262,173 @@ function initializeCharts() {
         }
     });
 
+    // Surface Wind Chart - Linear scale from 0m to 100m for 10m and 80m heights
+    const surfaceWindCtx = document.getElementById('surfaceWindChart').getContext('2d');
+    
+    // Register a custom plugin for rendering surface wind barbs
+    Chart.register({
+        id: 'surfaceWindBarbs',
+        afterDatasetsDraw: function(chart) {
+            const ctx = chart.ctx;
+            const chartArea = chart.chartArea;
+            
+            // Save the current context state
+            ctx.save();
+            
+            // Clip to chart area to prevent drawing outside
+            ctx.beginPath();
+            ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+            ctx.clip();
+            
+            chart.data.datasets.forEach((dataset, datasetIndex) => {
+                if (dataset.label === 'Surface Wind Layers') {
+                    dataset.data.forEach((point, index) => {
+                        if (point && point.speed !== undefined && point.direction !== undefined) {
+                            const meta = chart.getDatasetMeta(datasetIndex);
+                            const element = meta.data[index];
+                            if (element && !element.skip && 
+                                element.x >= chartArea.left && element.x <= chartArea.right &&
+                                element.y >= chartArea.top && element.y <= chartArea.bottom) {
+                                
+                                drawWindBarb(ctx, element.x, element.y, point.speed, point.direction);
+                            }
+                        }
+                    });
+                }
+            });
+            
+            // Restore the context state
+            ctx.restore();
+        }
+    });
+    
+    surfaceWindChart = new Chart(surfaceWindCtx, {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: 'Surface Wind Layers',
+                data: [],
+                backgroundColor: 'transparent',
+                borderColor: 'transparent',
+                pointRadius: 0, // Hide points, we'll show symbols instead
+                yAxisID: 'y'
+            }, {
+                type: 'line',
+                label: 'Wind Speed 10m (kn)',
+                data: [],
+                borderColor: '#00b894',
+                backgroundColor: 'rgba(0, 184, 148, 0.1)',
+                borderWidth: 3,
+                fill: false,
+                tension: 0.4,
+                yAxisID: 'y1'
+            }, {
+                type: 'line',
+                label: 'Wind Gusts 10m (kn)',
+                data: [],
+                borderColor: '#e17055',
+                backgroundColor: 'rgba(225, 112, 85, 0.1)',
+                borderWidth: 2,
+                fill: false,
+                tension: 0.4,
+                borderDash: [5, 5],
+                yAxisID: 'y1'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            events: ['mousedown', 'mousemove', 'mouseup', 'click', 'mouseover', 'mouseout', 'wheel'],
+            scales: {
+                y: {
+                    type: 'linear',
+                    position: 'left',
+                    min: 0, // Start from ground level
+                    max: 100, // Max altitude in meters for surface winds
+                    grid: {
+                        color: 'rgba(0,0,0,0.1)'
+                    },
+                    title: {
+                        display: true,
+                        text: 'Height (meters) - Linear Scale',
+                        font: { size: 14, weight: 'bold' }
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return value + 'm';
+                        }
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    position: 'right',
+                    min: 0,
+                    grid: {
+                        drawOnChartArea: false, // Don't draw grid lines for second axis
+                    },
+                    title: {
+                        display: true,
+                        text: 'Wind Speed (knots)',
+                        font: { size: 14, weight: 'bold' }
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return value + ' kn';
+                        }
+                    }
+                },
+                x: {
+                    type: 'time',
+                    time: {
+                        parser: 'YYYY-MM-DDTHH:mm',
+                        displayFormats: {
+                            hour: 'MMM dd HH:mm'
+                        }
+                    },
+                    min: new Date(),
+                    max: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
+                    grid: {
+                        color: 'rgba(0,0,0,0.1)'
+                    },
+                    title: {
+                        display: true,
+                        text: 'Time',
+                        font: { size: 14, weight: 'bold' }
+                    },
+                    ticks: {
+                        maxTicksLimit: 8,
+                        maxRotation: 45
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        title: function(context) {
+                            return new Date(context[0].parsed.x).toLocaleString();
+                        },
+                        label: function(context) {
+                            const point = context.raw;
+                            if (point.speed !== undefined && point.direction !== undefined) {
+                                return `Height: ${point.y}m, Speed: ${point.speed.toFixed(1)} kn, Direction: ${point.direction}° (${getWindDirectionName(point.direction)})`;
+                            } else {
+                                return `Wind Speed: ${point.y.toFixed(1)} kn`;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+
     // Function to draw wind barbs
     function drawWindBarb(ctx, x, y, speedKnots, directionDegrees) {
         ctx.save();
@@ -368,7 +577,7 @@ function initializeCharts() {
                 y: {
                     type: 'logarithmic',
                     position: 'left',
-                    min: 20, // Start from 20m for low-level winds
+                    min: 200, // Start from 200m for mid-level winds
                     max: 4000, // Max altitude in meters (4km)
                     grid: {
                         color: 'rgba(0,0,0,0.1)'
@@ -465,7 +674,19 @@ function updateCharts(data) {
         y: point.temperature
     }));
     
+    const dewPointData = data.temperature_data.map(point => ({
+        x: new Date(point.time).getTime(),
+        y: point.dew_point
+    }));
+    
+    const precipitationData = data.temperature_data.map(point => ({
+        x: new Date(point.time).getTime(),
+        y: point.precipitation
+    }));
+    
     temperatureChart.data.datasets[0].data = tempData;
+    temperatureChart.data.datasets[1].data = dewPointData;
+    temperatureChart.data.datasets[2].data = precipitationData;
     temperatureChart.update();
     
     // Update cloud chart with scatter data
@@ -486,6 +707,44 @@ function updateCharts(data) {
     
     cloudChart.data.datasets[0].data = scatterData;
     cloudChart.update();
+    
+    // Update surface wind chart with scatter data and line data
+    const surfaceWindScatterData = [];
+    const windSpeed10mData = [];
+    const windGusts10mData = [];
+    
+    if (data.surface_wind_data) {
+        data.surface_wind_data.forEach(timePoint => {
+            const timeValue = new Date(timePoint.time).getTime();
+            
+            // Add scatter data for wind barbs
+            timePoint.wind_layers.forEach(layer => {
+                surfaceWindScatterData.push({
+                    x: timeValue,
+                    y: layer.height_meters,
+                    speed: layer.speed,
+                    direction: layer.direction,
+                    symbol: layer.symbol
+                });
+            });
+            
+            // Add line data for wind speed and gusts at 10m
+            windSpeed10mData.push({
+                x: timeValue,
+                y: timePoint.wind_speed_10m
+            });
+            
+            windGusts10mData.push({
+                x: timeValue,
+                y: timePoint.wind_gusts_10m
+            });
+        });
+    }
+    
+    surfaceWindChart.data.datasets[0].data = surfaceWindScatterData;
+    surfaceWindChart.data.datasets[1].data = windSpeed10mData;
+    surfaceWindChart.data.datasets[2].data = windGusts10mData;
+    surfaceWindChart.update();
     
     // Update wind chart with scatter data
     const windScatterData = [];
@@ -526,6 +785,9 @@ function resetZoom() {
     if (cloudChart) {
         resetChartZoom(cloudChart);
     }
+    if (surfaceWindChart) {
+        resetChartZoom(surfaceWindChart);
+    }
     if (windChart) {
         resetChartZoom(windChart);
     }
@@ -545,6 +807,9 @@ function setupManualPanZoom() {
     }
     if (cloudChart) {
         addManualPanZoom(cloudChart, 'Cloud');
+    }
+    if (surfaceWindChart) {
+        addManualPanZoom(surfaceWindChart, 'SurfaceWind');
     }
     if (windChart) {
         addManualPanZoom(windChart, 'Wind');
@@ -588,13 +853,20 @@ function addManualPanZoom(chart, chartName) {
         // Sync with other charts
         if (chart === temperatureChart) {
             if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
+            if (surfaceWindChart) syncManualPan(surfaceWindChart, xAxis.options.min, xAxis.options.max);
             if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
         } else if (chart === cloudChart) {
             if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
+            if (surfaceWindChart) syncManualPan(surfaceWindChart, xAxis.options.min, xAxis.options.max);
+            if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
+        } else if (chart === surfaceWindChart) {
+            if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
+            if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
             if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
         } else if (chart === windChart) {
             if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
             if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
+            if (surfaceWindChart) syncManualPan(surfaceWindChart, xAxis.options.min, xAxis.options.max);
         }
     });
     
@@ -627,13 +899,20 @@ function addManualPanZoom(chart, chartName) {
         // Sync with other charts
         if (chart === temperatureChart) {
             if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
+            if (surfaceWindChart) syncManualPan(surfaceWindChart, xAxis.options.min, xAxis.options.max);
             if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
         } else if (chart === cloudChart) {
             if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
+            if (surfaceWindChart) syncManualPan(surfaceWindChart, xAxis.options.min, xAxis.options.max);
+            if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
+        } else if (chart === surfaceWindChart) {
+            if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
+            if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
             if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
         } else if (chart === windChart) {
             if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
             if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
+            if (surfaceWindChart) syncManualPan(surfaceWindChart, xAxis.options.min, xAxis.options.max);
         }
         
 

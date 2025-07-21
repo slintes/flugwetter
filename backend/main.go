@@ -25,12 +25,15 @@ type WeatherData struct {
 type ProcessedWeatherData struct {
 	TemperatureData []TemperaturePoint `json:"temperature_data"`
 	CloudData       []CloudPoint       `json:"cloud_data"`
+	SurfaceWindData []SurfaceWindPoint `json:"surface_wind_data"`
 	WindData        []WindPoint        `json:"wind_data"`
 }
 
 type TemperaturePoint struct {
-	Time        string  `json:"time"`
-	Temperature float64 `json:"temperature"`
+	Time          string  `json:"time"`
+	Temperature   float64 `json:"temperature"`
+	DewPoint      float64 `json:"dew_point"`
+	Precipitation float64 `json:"precipitation"`
 }
 
 type CloudPoint struct {
@@ -47,6 +50,20 @@ type CloudLayer struct {
 type WindPoint struct {
 	Time       string      `json:"time"`
 	WindLayers []WindLayer `json:"wind_layers"`
+}
+
+type SurfaceWindPoint struct {
+	Time         string             `json:"time"`
+	WindSpeed10m float64            `json:"wind_speed_10m"`
+	WindGusts10m float64            `json:"wind_gusts_10m"`
+	WindLayers   []SurfaceWindLayer `json:"wind_layers"`
+}
+
+type SurfaceWindLayer struct {
+	HeightMeters int     `json:"height_meters"`
+	Speed        float64 `json:"speed"`
+	Direction    int     `json:"direction"`
+	Symbol       string  `json:"symbol"`
 }
 
 type WindLayer struct {

@@ -14,6 +14,7 @@ type WeatherAPIResponse struct {
 	Hourly struct {
 		Time               []string  `json:"time"`
 		Temperature2m      []float64 `json:"temperature_2m"`
+		DewPoint2m         []float64 `json:"dew_point_2m"`
 		CloudCoverLow      []int     `json:"cloud_cover_low"`
 		CloudCover         []int     `json:"cloud_cover"`
 		CloudCoverMid      []int     `json:"cloud_cover_mid"`
@@ -21,6 +22,9 @@ type WeatherAPIResponse struct {
 		Precipitation      []float64 `json:"precipitation"`
 		WindSpeed10m       []float64 `json:"wind_speed_10m"`
 		WindDirection10m   []int     `json:"wind_direction_10m"`
+		WindGusts10m       []float64 `json:"wind_gusts_10m"`
+		WindSpeed80m       []float64 `json:"wind_speed_80m"`
+		WindDirection80m   []int     `json:"wind_direction_80m"`
 		Pressure           []float64 `json:"pressure_msl"`
 		RelativeHumidity2m []int     `json:"relative_humidity_2m"`
 
@@ -163,16 +167,19 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 	processed := &ProcessedWeatherData{
 		TemperatureData: make([]TemperaturePoint, 0),
 		CloudData:       make([]CloudPoint, 0),
+		SurfaceWindData: make([]SurfaceWindPoint, 0),
 		WindData:        make([]WindPoint, 0),
 	}
 
 	// Process temperature and cloud data
 	for i, timeStr := range apiResponse.Hourly.Time {
 		// Add temperature data
-		if i < len(apiResponse.Hourly.Temperature2m) {
+		if i < len(apiResponse.Hourly.Temperature2m) && i < len(apiResponse.Hourly.DewPoint2m) && i < len(apiResponse.Hourly.Precipitation) {
 			processed.TemperatureData = append(processed.TemperatureData, TemperaturePoint{
-				Time:        timeStr,
-				Temperature: apiResponse.Hourly.Temperature2m[i],
+				Time:          timeStr,
+				Temperature:   apiResponse.Hourly.Temperature2m[i],
+				DewPoint:      apiResponse.Hourly.DewPoint2m[i],
+				Precipitation: apiResponse.Hourly.Precipitation[i],
 			})
 		}
 
@@ -184,6 +191,25 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 				CloudLayers: cloudLayers,
 			})
 		}
+
+		// Add surface wind data (10m and 80m)
+		surfaceWindLayers := processSurfaceWindLayers(apiResponse, i)
+
+		// Get 10m wind speed and gusts for line chart
+		var windSpeed10m, windGusts10m float64
+		if i < len(apiResponse.Hourly.WindSpeed10m) {
+			windSpeed10m = apiResponse.Hourly.WindSpeed10m[i]
+		}
+		if i < len(apiResponse.Hourly.WindGusts10m) {
+			windGusts10m = apiResponse.Hourly.WindGusts10m[i]
+		}
+
+		processed.SurfaceWindData = append(processed.SurfaceWindData, SurfaceWindPoint{
+			Time:         timeStr,
+			WindSpeed10m: windSpeed10m,
+			WindGusts10m: windGusts10m,
+			WindLayers:   surfaceWindLayers,
+		})
 
 		// Add wind data - process all levels
 		windLayers := processWindLayers(apiResponse, i)
@@ -305,7 +331,7 @@ func processWindLayers(apiResponse *WeatherAPIResponse, timeIndex int) []WindLay
 			geoHeight := level.GeoHeight[timeIndex]
 
 			// Only include if we have valid data and height is within range
-			if speed > 0 && geoHeight >= 20 && geoHeight <= 4000 {
+			if speed > 0 && geoHeight >= 200 && geoHeight <= 4000 {
 				heightMeters := int(geoHeight)
 				speedKnots := speed
 
@@ -318,6 +344,45 @@ func processWindLayers(apiResponse *WeatherAPIResponse, timeIndex int) []WindLay
 					Symbol:       symbol,
 				})
 			}
+		}
+	}
+
+	return layers
+}
+
+// processSurfaceWindLayers extracts wind data for fixed heights (10m and 80m)
+func processSurfaceWindLayers(apiResponse *WeatherAPIResponse, timeIndex int) []SurfaceWindLayer {
+	var layers []SurfaceWindLayer
+
+	// Process 10m wind data
+	if timeIndex < len(apiResponse.Hourly.WindSpeed10m) && timeIndex < len(apiResponse.Hourly.WindDirection10m) {
+		speed10m := apiResponse.Hourly.WindSpeed10m[timeIndex]
+		direction10m := apiResponse.Hourly.WindDirection10m[timeIndex]
+
+		if speed10m > 0 {
+			symbol := getWindSymbol(speed10m, direction10m)
+			layers = append(layers, SurfaceWindLayer{
+				HeightMeters: 10,
+				Speed:        speed10m,
+				Direction:    direction10m,
+				Symbol:       symbol,
+			})
+		}
+	}
+
+	// Process 80m wind data
+	if timeIndex < len(apiResponse.Hourly.WindSpeed80m) && timeIndex < len(apiResponse.Hourly.WindDirection80m) {
+		speed80m := apiResponse.Hourly.WindSpeed80m[timeIndex]
+		direction80m := apiResponse.Hourly.WindDirection80m[timeIndex]
+
+		if speed80m > 0 {
+			symbol := getWindSymbol(speed80m, direction80m)
+			layers = append(layers, SurfaceWindLayer{
+				HeightMeters: 80,
+				Speed:        speed80m,
+				Direction:    direction80m,
+				Symbol:       symbol,
+			})
 		}
 	}
 
