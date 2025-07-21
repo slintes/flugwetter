@@ -1,5 +1,6 @@
 let temperatureChart;
 let cloudChart;
+let windChart;
 
 // Initialize charts when page loads
 document.addEventListener('DOMContentLoaded', function() {
@@ -218,6 +219,217 @@ function initializeCharts() {
             }
         }
     });
+
+    // Function to draw wind barbs
+    function drawWindBarb(ctx, x, y, speedKnots, directionDegrees) {
+        ctx.save();
+        
+        // If calm conditions (< 3 knots), draw a circle
+        if (speedKnots < 3) {
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.restore();
+            return;
+        }
+        
+        // Convert direction to radians (meteorological: direction wind comes FROM)
+        // Add 180° to point in direction wind is coming FROM
+        const angle = ((directionDegrees + 180) % 360) * Math.PI / 180;
+        
+        // Move to wind barb position
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        
+        // Set drawing style
+        ctx.strokeStyle = '#333';
+        ctx.fillStyle = '#333';
+        ctx.lineWidth = 1.5;
+        ctx.lineCap = 'round';
+        
+        // Calculate barb components
+        const speed = Math.round(speedKnots);
+        const pennants = Math.floor(speed / 50);
+        const fullBarbs = Math.floor((speed % 50) / 10);
+        const halfBarb = Math.floor((speed % 10) / 5);
+        
+        // Draw main shaft (points in direction wind comes FROM)
+        const shaftLength = 25;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -shaftLength);
+        ctx.stroke();
+        
+        // Draw barbs starting from the tail (center) of the shaft
+        let currentPos = 0;
+        const barbSpacing = 4;
+        const barbLength = 8;
+        
+        // Draw pennants (50 knots each) - at the tail
+        for (let i = 0; i < pennants; i++) {
+            ctx.beginPath();
+            ctx.moveTo(0, currentPos);
+            ctx.lineTo(-barbLength, currentPos - barbLength);
+            ctx.lineTo(0, currentPos - barbLength);
+            ctx.closePath();
+            ctx.fill();
+            currentPos -= barbSpacing * 2;
+        }
+        
+        // Draw full barbs (10 knots each) - at the tail
+        for (let i = 0; i < fullBarbs; i++) {
+            ctx.beginPath();
+            ctx.moveTo(0, currentPos);
+            ctx.lineTo(-barbLength, currentPos - barbLength);
+            ctx.stroke();
+            currentPos -= barbSpacing;
+        }
+        
+        // Draw half barb (5 knots) - at the tail
+        if (halfBarb > 0) {
+            ctx.beginPath();
+            ctx.moveTo(0, currentPos);
+            ctx.lineTo(-barbLength / 2, currentPos - barbLength / 2);
+            ctx.stroke();
+        }
+        
+        ctx.restore();
+    }
+
+    // Function to convert wind direction degrees to compass name
+    function getWindDirectionName(degrees) {
+        const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+        const index = Math.round(degrees / 22.5) % 16;
+        return directions[index];
+    }
+
+    // Wind Chart - Similar to cloud chart but for wind data
+    const windCtx = document.getElementById('windChart').getContext('2d');
+    
+    // Register a custom plugin for rendering wind barbs
+    Chart.register({
+        id: 'windBarbs',
+        afterDatasetsDraw: function(chart) {
+            const ctx = chart.ctx;
+            const chartArea = chart.chartArea;
+            
+            // Save the current context state
+            ctx.save();
+            
+            // Clip to chart area to prevent drawing outside
+            ctx.beginPath();
+            ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+            ctx.clip();
+            
+            chart.data.datasets.forEach((dataset, datasetIndex) => {
+                if (dataset.label === 'Wind Layers') {
+                    dataset.data.forEach((point, index) => {
+                        if (point && point.speed !== undefined && point.direction !== undefined) {
+                            const meta = chart.getDatasetMeta(datasetIndex);
+                            const element = meta.data[index];
+                            if (element && !element.skip && 
+                                element.x >= chartArea.left && element.x <= chartArea.right &&
+                                element.y >= chartArea.top && element.y <= chartArea.bottom) {
+                                
+                                drawWindBarb(ctx, element.x, element.y, point.speed, point.direction);
+                            }
+                        }
+                    });
+                }
+            });
+            
+            // Restore the context state
+            ctx.restore();
+        }
+    });
+    
+    windChart = new Chart(windCtx, {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: 'Wind Layers',
+                data: [],
+                backgroundColor: 'transparent',
+                borderColor: 'transparent',
+                pointRadius: 0 // Hide points, we'll show symbols instead
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            events: ['mousedown', 'mousemove', 'mouseup', 'click', 'mouseover', 'mouseout', 'wheel'],
+            scales: {
+                y: {
+                    type: 'logarithmic',
+                    position: 'left',
+                    min: 20, // Start from 20m for low-level winds
+                    max: 4000, // Max altitude in meters (4km)
+                    grid: {
+                        color: 'rgba(0,0,0,0.1)'
+                    },
+                    title: {
+                        display: true,
+                        text: 'Height (meters) - Log Scale',
+                        font: { size: 14, weight: 'bold' }
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            // Show nice round numbers on log scale
+                            if (value >= 1000) {
+                                return (value / 1000) + 'km';
+                            }
+                            return value + 'm';
+                        }
+                    }
+                },
+                x: {
+                    type: 'time',
+                    time: {
+                        parser: 'YYYY-MM-DDTHH:mm',
+                        displayFormats: {
+                            hour: 'MMM dd HH:mm'
+                        }
+                    },
+                    min: new Date(),
+                    max: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
+                    grid: {
+                        color: 'rgba(0,0,0,0.1)'
+                    },
+                    title: {
+                        display: true,
+                        text: 'Time',
+                        font: { size: 14, weight: 'bold' }
+                    },
+                    ticks: {
+                        maxTicksLimit: 8,
+                        maxRotation: 45
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false // Hide legend since we show symbols
+                },
+                tooltip: {
+                    callbacks: {
+                        title: function(context) {
+                            return new Date(context[0].parsed.x).toLocaleString();
+                        },
+                        label: function(context) {
+                            const point = context.raw;
+                            return `Height: ${point.y}m, Speed: ${point.speed.toFixed(1)} kn, Direction: ${point.direction}° (${getWindDirectionName(point.direction)})`;
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 async function loadWeatherData() {
@@ -274,6 +486,28 @@ function updateCharts(data) {
     
     cloudChart.data.datasets[0].data = scatterData;
     cloudChart.update();
+    
+    // Update wind chart with scatter data
+    const windScatterData = [];
+    
+    if (data.wind_data) {
+        data.wind_data.forEach(timePoint => {
+            const timeValue = new Date(timePoint.time).getTime();
+            
+            timePoint.wind_layers.forEach(layer => {
+                windScatterData.push({
+                    x: timeValue,
+                    y: layer.height_meters,
+                    speed: layer.speed,
+                    direction: layer.direction,
+                    symbol: layer.symbol
+                });
+            });
+        });
+    }
+    
+    windChart.data.datasets[0].data = windScatterData;
+    windChart.update();
 }
 
 // Function to refresh data
@@ -284,13 +518,16 @@ function refreshData() {
 // Auto-refresh every 15 minutes (900000 ms)
 setInterval(refreshData, 900000);
 
-// Function to reset zoom on both charts
+// Function to reset zoom on all charts
 function resetZoom() {
     if (temperatureChart) {
         resetChartZoom(temperatureChart);
     }
     if (cloudChart) {
         resetChartZoom(cloudChart);
+    }
+    if (windChart) {
+        resetChartZoom(windChart);
     }
 }
 
@@ -308,6 +545,9 @@ function setupManualPanZoom() {
     }
     if (cloudChart) {
         addManualPanZoom(cloudChart, 'Cloud');
+    }
+    if (windChart) {
+        addManualPanZoom(windChart, 'Wind');
     }
 }
 
@@ -345,11 +585,16 @@ function addManualPanZoom(chart, chartName) {
         
         chart.update('none');
         
-        // Sync with other chart
-        if (chart === temperatureChart && cloudChart) {
-            syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
-        } else if (chart === cloudChart && temperatureChart) {
-            syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
+        // Sync with other charts
+        if (chart === temperatureChart) {
+            if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
+            if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
+        } else if (chart === cloudChart) {
+            if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
+            if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
+        } else if (chart === windChart) {
+            if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
+            if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
         }
     });
     
@@ -379,11 +624,16 @@ function addManualPanZoom(chart, chartName) {
         
         chart.update('none');
         
-        // Sync with other chart
-        if (chart === temperatureChart && cloudChart) {
-            syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
-        } else if (chart === cloudChart && temperatureChart) {
-            syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
+        // Sync with other charts
+        if (chart === temperatureChart) {
+            if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
+            if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
+        } else if (chart === cloudChart) {
+            if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
+            if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
+        } else if (chart === windChart) {
+            if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
+            if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
         }
         
 

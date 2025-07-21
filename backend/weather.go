@@ -24,6 +24,27 @@ type WeatherAPIResponse struct {
 		Pressure           []float64 `json:"pressure_msl"`
 		RelativeHumidity2m []int     `json:"relative_humidity_2m"`
 
+		// hPa-based wind data
+		WindSpeed1000hPa []float64 `json:"wind_speed_1000hPa"`
+		WindSpeed975hPa  []float64 `json:"wind_speed_975hPa"`
+		WindSpeed950hPa  []float64 `json:"wind_speed_950hPa"`
+		WindSpeed925hPa  []float64 `json:"wind_speed_925hPa"`
+		WindSpeed900hPa  []float64 `json:"wind_speed_900hPa"`
+		WindSpeed850hPa  []float64 `json:"wind_speed_850hPa"`
+		WindSpeed800hPa  []float64 `json:"wind_speed_800hPa"`
+		WindSpeed700hPa  []float64 `json:"wind_speed_700hPa"`
+		WindSpeed600hPa  []float64 `json:"wind_speed_600hPa"`
+
+		WindDirection1000hPa []int `json:"wind_direction_1000hPa"`
+		WindDirection975hPa  []int `json:"wind_direction_975hPa"`
+		WindDirection950hPa  []int `json:"wind_direction_950hPa"`
+		WindDirection925hPa  []int `json:"wind_direction_925hPa"`
+		WindDirection900hPa  []int `json:"wind_direction_900hPa"`
+		WindDirection850hPa  []int `json:"wind_direction_850hPa"`
+		WindDirection800hPa  []int `json:"wind_direction_800hPa"`
+		WindDirection700hPa  []int `json:"wind_direction_700hPa"`
+		WindDirection600hPa  []int `json:"wind_direction_600hPa"`
+
 		// hPa-based cloud cover data
 		CloudCover1000hPa []int `json:"cloud_cover_1000hPa"`
 		CloudCover975hPa  []int `json:"cloud_cover_975hPa"`
@@ -142,6 +163,7 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 	processed := &ProcessedWeatherData{
 		TemperatureData: make([]TemperaturePoint, 0),
 		CloudData:       make([]CloudPoint, 0),
+		WindData:        make([]WindPoint, 0),
 	}
 
 	// Process temperature and cloud data
@@ -160,6 +182,15 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 			processed.CloudData = append(processed.CloudData, CloudPoint{
 				Time:        timeStr,
 				CloudLayers: cloudLayers,
+			})
+		}
+
+		// Add wind data - process all levels
+		windLayers := processWindLayers(apiResponse, i)
+		if len(windLayers) > 0 {
+			processed.WindData = append(processed.WindData, WindPoint{
+				Time:       timeStr,
+				WindLayers: windLayers,
 			})
 		}
 	}
@@ -243,4 +274,62 @@ func getCloudSymbol(coverage int) string {
 	default:
 		return "☁☁☁" // Overcast (88-100%)
 	}
+}
+
+// processWindLayers extracts wind data for hPa levels and converts to layers with heights
+func processWindLayers(apiResponse *WeatherAPIResponse, timeIndex int) []WindLayer {
+	// Only use hPa-based wind data with geopotential heights
+	hPaWindLevels := []struct {
+		Speed     []float64
+		Direction []int
+		GeoHeight []float64
+	}{
+		{apiResponse.Hourly.WindSpeed1000hPa, apiResponse.Hourly.WindDirection1000hPa, apiResponse.Hourly.GeopotentialHeight1000hPa},
+		{apiResponse.Hourly.WindSpeed975hPa, apiResponse.Hourly.WindDirection975hPa, apiResponse.Hourly.GeopotentialHeight975hPa},
+		{apiResponse.Hourly.WindSpeed950hPa, apiResponse.Hourly.WindDirection950hPa, apiResponse.Hourly.GeopotentialHeight950hPa},
+		{apiResponse.Hourly.WindSpeed925hPa, apiResponse.Hourly.WindDirection925hPa, apiResponse.Hourly.GeopotentialHeight925hPa},
+		{apiResponse.Hourly.WindSpeed900hPa, apiResponse.Hourly.WindDirection900hPa, apiResponse.Hourly.GeopotentialHeight900hPa},
+		{apiResponse.Hourly.WindSpeed850hPa, apiResponse.Hourly.WindDirection850hPa, apiResponse.Hourly.GeopotentialHeight850hPa},
+		{apiResponse.Hourly.WindSpeed800hPa, apiResponse.Hourly.WindDirection800hPa, apiResponse.Hourly.GeopotentialHeight800hPa},
+		{apiResponse.Hourly.WindSpeed700hPa, apiResponse.Hourly.WindDirection700hPa, apiResponse.Hourly.GeopotentialHeight700hPa},
+		{apiResponse.Hourly.WindSpeed600hPa, apiResponse.Hourly.WindDirection600hPa, apiResponse.Hourly.GeopotentialHeight600hPa},
+	}
+
+	var layers []WindLayer
+
+	// Process hPa-based levels only
+	for _, level := range hPaWindLevels {
+		if timeIndex < len(level.Speed) && timeIndex < len(level.Direction) && timeIndex < len(level.GeoHeight) {
+			speed := level.Speed[timeIndex]
+			direction := level.Direction[timeIndex]
+			geoHeight := level.GeoHeight[timeIndex]
+
+			// Only include if we have valid data and height is within range
+			if speed > 0 && geoHeight >= 20 && geoHeight <= 4000 {
+				heightMeters := int(geoHeight)
+				speedKnots := speed
+
+				symbol := getWindSymbol(speedKnots, direction)
+
+				layers = append(layers, WindLayer{
+					HeightMeters: heightMeters,
+					Speed:        speedKnots,
+					Direction:    direction,
+					Symbol:       symbol,
+				})
+			}
+		}
+	}
+
+	return layers
+}
+
+// getWindSymbol returns wind barb type based on speed (direction handled in frontend)
+func getWindSymbol(speedKnots float64, direction int) string {
+	// Return barb type based on wind speed for frontend rendering
+	if speedKnots < 3 {
+		return "calm"
+	}
+	// Return speed for barb calculation in frontend
+	return "barb"
 }

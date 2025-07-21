@@ -37,6 +37,18 @@
                 <canvas id="cloudChart"></canvas>
             </div>
 
+            <div class="chart-container">
+                <h2>Wind Speed and Direction at Different Altitudes</h2>
+                <div class="chart-legend">
+                    <span>○ Calm (0-3 kn)</span>
+                    <span>| Half barb = 5 kn</span>
+                    <span>|— Full barb = 10 kn</span>
+                    <span>▲ Pennant = 50 kn</span>
+                    <span>↑ Points FROM wind direction</span>
+                </div>
+                <canvas id="windChart"></canvas>
+            </div>
+
             <div class="loading" id="loading">
                 <p>Loading weather data...</p>
             </div>
@@ -47,7 +59,7 @@
             </div>
 
             <div class="chart-instructions">
-                <strong>Chart Interaction:</strong> Showing next 24 hours • Use mouse wheel to zoom in/out • Click and drag to pan horizontally • Both charts are synchronized
+                <strong>Chart Interaction:</strong> Showing next 24 hours • Use mouse wheel to zoom in/out • Click and drag to pan horizontally • All charts are synchronized
                 <br>
                 <button onclick="resetZoom()" style="margin-top: 10px; padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">Show All Data</button>
             </div>
