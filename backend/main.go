@@ -43,9 +43,9 @@ type CloudPoint struct {
 }
 
 type CloudLayer struct {
-	HeightMeters int    `json:"height_meters"`
-	Coverage     int    `json:"coverage"`
-	Symbol       string `json:"symbol"`
+	HeightFeet int    `json:"height_feet"`
+	Coverage   int    `json:"coverage"`
+	Symbol     string `json:"symbol"`
 }
 
 type WindPoint struct {
@@ -61,17 +61,17 @@ type SurfaceWindPoint struct {
 }
 
 type SurfaceWindLayer struct {
-	HeightMeters int     `json:"height_meters"`
-	Speed        float64 `json:"speed"`
-	Direction    int     `json:"direction"`
-	Symbol       string  `json:"symbol"`
+	HeightFeet int     `json:"height_feet"`
+	Speed      float64 `json:"speed"`
+	Direction  int     `json:"direction"`
+	Symbol     string  `json:"symbol"`
 }
 
 type WindLayer struct {
-	HeightMeters int     `json:"height_meters"`
-	Speed        float64 `json:"speed"`
-	Direction    int     `json:"direction"`
-	Symbol       string  `json:"symbol"`
+	HeightFeet int     `json:"height_feet"`
+	Speed      float64 `json:"speed"`
+	Direction  int     `json:"direction"`
+	Symbol     string  `json:"symbol"`
 }
 
 func main() {

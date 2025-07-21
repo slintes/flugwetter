@@ -69,6 +69,7 @@ main {
     font-size: 1.5rem;
     border-bottom: 3px solid #74b9ff;
     padding-bottom: 10px;
+    text-align: center;
 }
 
 canvas {

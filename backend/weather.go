@@ -261,19 +261,18 @@ func processCloudLayers(apiResponse *WeatherAPIResponse, timeIndex int) []CloudL
 		if timeIndex < len(level.CloudCover) && timeIndex < len(level.GeoHeight) {
 			coverage := level.CloudCover[timeIndex]
 			geoHeight := level.GeoHeight[timeIndex]
+			// Convert geopotential height from meters to feet (1 meter = 3.28084 feet)
+			heightFeet := int(geoHeight * 3.28084)
 
 			// Only include layers with some cloud coverage (avoid completely transparent symbols)
 			if coverage > 0 {
-				// Convert geopotential height to meters (geopotential height is already in meters)
-				heightMeters := int(geoHeight)
-
 				// Always use cloud symbol (transparency based on coverage in frontend)
 				symbol := getCloudSymbol(coverage)
 
 				layers = append(layers, CloudLayer{
-					HeightMeters: heightMeters,
-					Coverage:     coverage,
-					Symbol:       symbol,
+					HeightFeet: heightFeet,
+					Coverage:   coverage,
+					Symbol:     symbol,
 				})
 			}
 		}
@@ -315,19 +314,20 @@ func processWindLayers(apiResponse *WeatherAPIResponse, timeIndex int) []WindLay
 			speed := level.Speed[timeIndex]
 			direction := level.Direction[timeIndex]
 			geoHeight := level.GeoHeight[timeIndex]
+			// Convert geopotential height from meters to feet (1 meter = 3.28084 feet)
+			heightFeet := int(geoHeight * 3.28084)
 
-			// Only include if we have valid data and height is within range
-			if speed > 0 && geoHeight >= 200 && geoHeight <= 4000 {
-				heightMeters := int(geoHeight)
+			// Only include if we have valid data and height is within range (600-12000 feet)
+			if speed > 0 && heightFeet >= 600 && heightFeet <= 12000 {
 				speedKnots := speed
 
 				symbol := getWindSymbol(speedKnots, direction)
 
 				layers = append(layers, WindLayer{
-					HeightMeters: heightMeters,
-					Speed:        speedKnots,
-					Direction:    direction,
-					Symbol:       symbol,
+					HeightFeet: heightFeet,
+					Speed:      speedKnots,
+					Direction:  direction,
+					Symbol:     symbol,
 				})
 			}
 		}
@@ -348,10 +348,10 @@ func processSurfaceWindLayers(apiResponse *WeatherAPIResponse, timeIndex int) []
 		if speed10m > 0 {
 			symbol := getWindSymbol(speed10m, direction10m)
 			layers = append(layers, SurfaceWindLayer{
-				HeightMeters: 10,
-				Speed:        speed10m,
-				Direction:    direction10m,
-				Symbol:       symbol,
+				HeightFeet: 33, // 10 meters = 33 feet
+				Speed:      speed10m,
+				Direction:  direction10m,
+				Symbol:     symbol,
 			})
 		}
 	}
@@ -364,10 +364,10 @@ func processSurfaceWindLayers(apiResponse *WeatherAPIResponse, timeIndex int) []
 		if speed80m > 0 {
 			symbol := getWindSymbol(speed80m, direction80m)
 			layers = append(layers, SurfaceWindLayer{
-				HeightMeters: 80,
-				Speed:        speed80m,
-				Direction:    direction80m,
-				Symbol:       symbol,
+				HeightFeet: 262, // 80 meters = 262 feet
+				Speed:      speed80m,
+				Direction:  direction80m,
+				Symbol:     symbol,
 			})
 		}
 	}

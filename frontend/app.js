@@ -109,7 +109,7 @@ function initializeCharts() {
                     display: true,
                     position: 'right',
                     beginAtZero: true,
-                    max: 20, // Maximum precipitation value of 20mm
+                    max: 10, // Maximum precipitation value of 10mm
                     grid: {
                         drawOnChartArea: false,
                     },
@@ -275,23 +275,19 @@ function initializeCharts() {
                 y: {
                     type: 'logarithmic',
                     position: 'left',
-                    min: 40, // Start from 40m for low-level clouds
-                    max: 10000, // Max altitude in meters
+                    min: 100, // Start from 100ft for low-level clouds
+                    max: 24000, // Max altitude 24,000ft
                     grid: {
                         color: 'rgba(0,0,0,0.1)'
                     },
                     title: {
                         display: true,
-                        text: 'Height (meters) - Log Scale',
+                        text: 'Height (feet) - Log Scale',
                         font: { size: 14, weight: 'bold' }
                     },
                     ticks: {
                         callback: function(value) {
-                            // Show nice round numbers on log scale
-                            if (value >= 1000) {
-                                return (value / 1000) + 'km';
-                            }
-                            return value + 'm';
+                            return value + 'ft';
                         }
                     }
                 },
@@ -354,7 +350,7 @@ function initializeCharts() {
                         },
                         label: function(context) {
                             const point = context.raw;
-                            return `Height: ${point.y}m, Coverage: ${point.coverage}%`;
+                            return `Height: ${point.y}ft, Coverage: ${point.coverage}%`;
                         }
                     }
                 }
@@ -448,18 +444,18 @@ function initializeCharts() {
                     type: 'linear',
                     position: 'left',
                     min: 0, // Start from ground level
-                    max: 100, // Max altitude in meters for surface winds
+                    max: 300, // Max altitude 300ft for surface winds
                     grid: {
                         color: 'rgba(0,0,0,0.1)'
                     },
                     title: {
                         display: true,
-                        text: 'Height (meters) - Linear Scale',
+                        text: 'Height (feet) - Linear Scale',
                         font: { size: 14, weight: 'bold' }
                     },
                     ticks: {
                         callback: function(value) {
-                            return value + 'm';
+                            return value + 'ft';
                         }
                     }
                 },
@@ -548,7 +544,7 @@ function initializeCharts() {
                         label: function(context) {
                             const point = context.raw;
                             if (point.speed !== undefined && point.direction !== undefined) {
-                                return `Height: ${point.y}m, Speed: ${point.speed.toFixed(1)} kn, Direction: ${point.direction}° (${getWindDirectionName(point.direction)})`;
+                                return `Height: ${point.y}ft, Speed: ${point.speed.toFixed(1)} kn, Direction: ${point.direction}° (${getWindDirectionName(point.direction)})`;
                             } else {
                                 return `Wind Speed: ${point.y.toFixed(1)} kn`;
                             }
@@ -707,23 +703,19 @@ function initializeCharts() {
                 y: {
                     type: 'logarithmic',
                     position: 'left',
-                    min: 200, // Start from 200m for mid-level winds
-                    max: 4000, // Max altitude in meters (4km)
+                    min: 600, // Start from 600ft for mid-level winds
+                    max: 12000, // Max altitude 12,000ft
                     grid: {
                         color: 'rgba(0,0,0,0.1)'
                     },
                     title: {
                         display: true,
-                        text: 'Height (meters) - Log Scale',
+                        text: 'Height (feet) - Log Scale',
                         font: { size: 14, weight: 'bold' }
                     },
                     ticks: {
                         callback: function(value) {
-                            // Show nice round numbers on log scale
-                            if (value >= 1000) {
-                                return (value / 1000) + 'km';
-                            }
-                            return value + 'm';
+                            return value + 'ft';
                         }
                     }
                 },
@@ -786,7 +778,7 @@ function initializeCharts() {
                         },
                         label: function(context) {
                             const point = context.raw;
-                            return `Height: ${point.y}m, Speed: ${point.speed.toFixed(1)} kn, Direction: ${point.direction}° (${getWindDirectionName(point.direction)})`;
+                            return `Height: ${point.y}ft, Speed: ${point.speed.toFixed(1)} kn, Direction: ${point.direction}° (${getWindDirectionName(point.direction)})`;
                         }
                     }
                 }
@@ -860,7 +852,7 @@ function updateCharts(data) {
         timePoint.cloud_layers.forEach(layer => {
             scatterData.push({
                 x: timeValue,
-                y: layer.height_meters,
+                y: layer.height_feet,
                 coverage: layer.coverage,
                 symbol: layer.symbol
             });
@@ -883,7 +875,7 @@ function updateCharts(data) {
             timePoint.wind_layers.forEach(layer => {
                 surfaceWindScatterData.push({
                     x: timeValue,
-                    y: layer.height_meters,
+                    y: layer.height_feet,
                     speed: layer.speed,
                     direction: layer.direction,
                     symbol: layer.symbol
@@ -918,7 +910,7 @@ function updateCharts(data) {
             timePoint.wind_layers.forEach(layer => {
                 windScatterData.push({
                     x: timeValue,
-                    y: layer.height_meters,
+                    y: layer.height_feet,
                     speed: layer.speed,
                     direction: layer.direction,
                     symbol: layer.symbol
