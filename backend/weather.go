@@ -262,12 +262,12 @@ func processCloudLayers(apiResponse *WeatherAPIResponse, timeIndex int) []CloudL
 			coverage := level.CloudCover[timeIndex]
 			geoHeight := level.GeoHeight[timeIndex]
 
-			// Only include layers with some cloud coverage
+			// Only include layers with some cloud coverage (avoid completely transparent symbols)
 			if coverage > 0 {
 				// Convert geopotential height to meters (geopotential height is already in meters)
 				heightMeters := int(geoHeight)
 
-				// Determine cloud symbol based on coverage (divided into eighths)
+				// Always use cloud symbol (transparency based on coverage in frontend)
 				symbol := getCloudSymbol(coverage)
 
 				layers = append(layers, CloudLayer{
@@ -282,26 +282,10 @@ func processCloudLayers(apiResponse *WeatherAPIResponse, timeIndex int) []CloudL
 	return layers
 }
 
-// getCloudSymbol returns appropriate cloud symbol based on coverage percentage
+// getCloudSymbol returns cloud symbol (always ☁ - transparency handled in frontend based on coverage)
 func getCloudSymbol(coverage int) string {
-	switch {
-	case coverage <= 12:
-		return "☀" // Clear (0-12%)
-	case coverage <= 25:
-		return "⛅" // Partly sunny (13-25%)
-	case coverage <= 37:
-		return "🌤" // Partly cloudy (26-37%)
-	case coverage <= 50:
-		return "🌥" // Mostly cloudy (38-50%)
-	case coverage <= 62:
-		return "☁" // Cloudy (51-62%)
-	case coverage <= 75:
-		return "🌫" // Very cloudy (63-75%)
-	case coverage <= 87:
-		return "☁☁" // Heavy clouds (76-87%)
-	default:
-		return "☁☁☁" // Overcast (88-100%)
-	}
+	// Always return cloud symbol, transparency will be based on coverage percentage in frontend
+	return "☁"
 }
 
 // processWindLayers extracts wind data for hPa levels and converts to layers with heights

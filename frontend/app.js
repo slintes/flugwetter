@@ -188,26 +188,29 @@ function initializeCharts() {
             chart.data.datasets.forEach((dataset, datasetIndex) => {
                 if (dataset.label === 'Cloud Layers') {
                     dataset.data.forEach((point, index) => {
-                        if (point && point.symbol) {
+                        if (point && point.coverage !== undefined) {
                             const meta = chart.getDatasetMeta(datasetIndex);
                             const element = meta.data[index];
                             if (element && !element.skip && 
                                 element.x >= chartArea.left && element.x <= chartArea.right &&
                                 element.y >= chartArea.top && element.y <= chartArea.bottom) {
                                 
-                                // Set up text rendering
-                                ctx.font = '18px Arial';
+                                // Calculate transparency based on coverage (0% = transparent, 100% = opaque)
+                                const alpha = point.coverage / 100;
+                                
+                                // Set up text rendering (200% scale: 18px -> 36px)
+                                ctx.font = '36px Arial';
                                 ctx.textAlign = 'center';
                                 ctx.textBaseline = 'middle';
                                 
-                                // Add a slight background to make symbols more visible
-                                const textWidth = ctx.measureText(point.symbol).width;
-                                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                                ctx.fillRect(element.x - textWidth/2 - 3, element.y - 10, textWidth + 6, 20);
+                                // Add a slight background to make symbols more visible (scaled for larger symbol)
+                                const textWidth = ctx.measureText('☁').width;
+                                ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(0.9, alpha + 0.2)})`;
+                                ctx.fillRect(element.x - textWidth/2 - 6, element.y - 18, textWidth + 12, 36);
                                 
-                                // Draw the symbol
-                                ctx.fillStyle = '#333';
-                                ctx.fillText(point.symbol, element.x, element.y);
+                                // Draw the cloud symbol with transparency based on coverage
+                                ctx.fillStyle = `rgba(51, 51, 51, ${alpha})`;
+                                ctx.fillText('☁', element.x, element.y);
                             }
                         }
                     });
@@ -297,7 +300,7 @@ function initializeCharts() {
                         },
                         label: function(context) {
                             const point = context.raw;
-                            return `Height: ${point.y}m, Coverage: ${point.coverage}%, Symbol: ${point.symbol}`;
+                            return `Height: ${point.y}m, Coverage: ${point.coverage}%`;
                         }
                     }
                 }
