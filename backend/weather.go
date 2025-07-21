@@ -12,21 +12,22 @@ import (
 // WeatherAPIResponse represents the complete API response from open-meteo
 type WeatherAPIResponse struct {
 	Hourly struct {
-		Time               []string  `json:"time"`
-		Temperature2m      []float64 `json:"temperature_2m"`
-		DewPoint2m         []float64 `json:"dew_point_2m"`
-		CloudCoverLow      []int     `json:"cloud_cover_low"`
-		CloudCover         []int     `json:"cloud_cover"`
-		CloudCoverMid      []int     `json:"cloud_cover_mid"`
-		CloudCoverHigh     []int     `json:"cloud_cover_high"`
-		Precipitation      []float64 `json:"precipitation"`
-		WindSpeed10m       []float64 `json:"wind_speed_10m"`
-		WindDirection10m   []int     `json:"wind_direction_10m"`
-		WindGusts10m       []float64 `json:"wind_gusts_10m"`
-		WindSpeed80m       []float64 `json:"wind_speed_80m"`
-		WindDirection80m   []int     `json:"wind_direction_80m"`
-		Pressure           []float64 `json:"pressure_msl"`
-		RelativeHumidity2m []int     `json:"relative_humidity_2m"`
+		Time                     []string  `json:"time"`
+		Temperature2m            []float64 `json:"temperature_2m"`
+		DewPoint2m               []float64 `json:"dew_point_2m"`
+		PrecipitationProbability []int     `json:"precipitation_probability"`
+		CloudCoverLow            []int     `json:"cloud_cover_low"`
+		CloudCover               []int     `json:"cloud_cover"`
+		CloudCoverMid            []int     `json:"cloud_cover_mid"`
+		CloudCoverHigh           []int     `json:"cloud_cover_high"`
+		Precipitation            []float64 `json:"precipitation"`
+		WindSpeed10m             []float64 `json:"wind_speed_10m"`
+		WindDirection10m         []int     `json:"wind_direction_10m"`
+		WindGusts10m             []float64 `json:"wind_gusts_10m"`
+		WindSpeed80m             []float64 `json:"wind_speed_80m"`
+		WindDirection80m         []int     `json:"wind_direction_80m"`
+		Pressure                 []float64 `json:"pressure_msl"`
+		RelativeHumidity2m       []int     `json:"relative_humidity_2m"`
 
 		// hPa-based wind data
 		WindSpeed1000hPa []float64 `json:"wind_speed_1000hPa"`
@@ -174,12 +175,13 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 	// Process temperature and cloud data
 	for i, timeStr := range apiResponse.Hourly.Time {
 		// Add temperature data
-		if i < len(apiResponse.Hourly.Temperature2m) && i < len(apiResponse.Hourly.DewPoint2m) && i < len(apiResponse.Hourly.Precipitation) {
+		if i < len(apiResponse.Hourly.Temperature2m) && i < len(apiResponse.Hourly.DewPoint2m) && i < len(apiResponse.Hourly.Precipitation) && i < len(apiResponse.Hourly.PrecipitationProbability) {
 			processed.TemperatureData = append(processed.TemperatureData, TemperaturePoint{
-				Time:          timeStr,
-				Temperature:   apiResponse.Hourly.Temperature2m[i],
-				DewPoint:      apiResponse.Hourly.DewPoint2m[i],
-				Precipitation: apiResponse.Hourly.Precipitation[i],
+				Time:                     timeStr,
+				Temperature:              apiResponse.Hourly.Temperature2m[i],
+				DewPoint:                 apiResponse.Hourly.DewPoint2m[i],
+				Precipitation:            apiResponse.Hourly.Precipitation[i],
+				PrecipitationProbability: apiResponse.Hourly.PrecipitationProbability[i],
 			})
 		}
 

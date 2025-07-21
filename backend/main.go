@@ -30,10 +30,11 @@ type ProcessedWeatherData struct {
 }
 
 type TemperaturePoint struct {
-	Time          string  `json:"time"`
-	Temperature   float64 `json:"temperature"`
-	DewPoint      float64 `json:"dew_point"`
-	Precipitation float64 `json:"precipitation"`
+	Time                     string  `json:"time"`
+	Temperature              float64 `json:"temperature"`
+	DewPoint                 float64 `json:"dew_point"`
+	Precipitation            float64 `json:"precipitation"`
+	PrecipitationProbability int     `json:"precipitation_probability"`
 }
 
 type CloudPoint struct {

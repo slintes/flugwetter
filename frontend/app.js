@@ -46,7 +46,39 @@ function initializeCharts() {
                 borderWidth: 2,
                 fill: true,
                 tension: 0.4,
-                yAxisID: 'y1'
+                yAxisID: 'y1',
+                segment: {
+                    borderColor: function(ctx) {
+                        const p0 = ctx.p0.raw;
+                        const p1 = ctx.p1.raw;
+                        if (p0 && p0.precipitationProbability !== undefined) {
+                            const probability = p0.precipitationProbability / 100;
+                            const alpha = Math.max(0.2, probability);
+                            return `rgba(9, 132, 227, ${alpha})`;
+                        }
+                        return 'rgba(9, 132, 227, 0.5)';
+                    },
+                    backgroundColor: function(ctx) {
+                        const p0 = ctx.p0.raw;
+                        if (p0 && p0.precipitationProbability !== undefined) {
+                            const probability = p0.precipitationProbability / 100;
+                            const alpha = Math.max(0.1, probability * 0.4);
+                            return `rgba(9, 132, 227, ${alpha})`;
+                        }
+                        return 'rgba(9, 132, 227, 0.2)';
+                    }
+                }
+            }, {
+                label: 'Precipitation Probability (%)',
+                data: [],
+                borderColor: 'transparent',
+                backgroundColor: 'transparent',
+                borderWidth: 0,
+                fill: false,
+                tension: 0.4,
+                yAxisID: 'y2',
+                pointRadius: 0,
+                pointHoverRadius: 0
             }]
         },
         options: {
@@ -77,6 +109,7 @@ function initializeCharts() {
                     display: true,
                     position: 'right',
                     beginAtZero: true,
+                    max: 20, // Maximum precipitation value of 20mm
                     grid: {
                         drawOnChartArea: false,
                     },
@@ -89,6 +122,16 @@ function initializeCharts() {
                         callback: function(value) {
                             return value + ' mm';
                         }
+                    }
+                },
+                y2: {
+                    type: 'linear',
+                    display: false, // Invisible scale
+                    position: 'right',
+                    min: 0,
+                    max: 100, // Scale from 0 to 100%
+                    grid: {
+                        drawOnChartArea: false,
                     }
                 },
                 x: {
@@ -681,12 +724,20 @@ function updateCharts(data) {
     
     const precipitationData = data.temperature_data.map(point => ({
         x: new Date(point.time).getTime(),
-        y: point.precipitation
+        y: point.precipitation,
+        precipitationProbability: point.precipitation_probability // Include probability for scriptable functions
+    }));
+    
+    const precipitationProbabilityData = data.temperature_data.map(point => ({
+        x: new Date(point.time).getTime(),
+        y: point.precipitation_probability
     }));
     
     temperatureChart.data.datasets[0].data = tempData;
     temperatureChart.data.datasets[1].data = dewPointData;
     temperatureChart.data.datasets[2].data = precipitationData;
+    temperatureChart.data.datasets[3].data = precipitationProbabilityData;
+    
     temperatureChart.update();
     
     // Update cloud chart with scatter data
