@@ -170,7 +170,6 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 	processed := &ProcessedWeatherData{
 		TemperatureData: make([]TemperaturePoint, 0),
 		CloudData:       make([]CloudPoint, 0),
-		SurfaceWindData: make([]SurfaceWindPoint, 0),
 		WindData:        make([]WindPoint, 0),
 	}
 
@@ -205,9 +204,6 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 			Visibility:  visibility,
 		})
 
-		// Add surface wind data (10m and 80m)
-		surfaceWindLayers := processSurfaceWindLayers(apiResponse, i)
-
 		// Get 10m wind speed and gusts for line chart
 		var windSpeed10m, windGusts10m float64
 		if i < len(apiResponse.Hourly.WindSpeed10m) {
@@ -217,19 +213,14 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 			windGusts10m = apiResponse.Hourly.WindGusts10m[i]
 		}
 
-		processed.SurfaceWindData = append(processed.SurfaceWindData, SurfaceWindPoint{
-			Time:         timeStr,
-			WindSpeed10m: windSpeed10m,
-			WindGusts10m: windGusts10m,
-			WindLayers:   surfaceWindLayers,
-		})
-
 		// Add wind data - process all levels
 		windLayers := processWindLayers(apiResponse, i)
 		if len(windLayers) > 0 {
 			processed.WindData = append(processed.WindData, WindPoint{
-				Time:       timeStr,
-				WindLayers: windLayers,
+				Time:         timeStr,
+				WindSpeed10m: windSpeed10m,
+				WindGusts10m: windGusts10m,
+				WindLayers:   windLayers,
 			})
 		}
 	}
@@ -301,35 +292,46 @@ func getCloudSymbol(coverage int) string {
 // processWindLayers extracts wind data for hPa levels and converts to layers with heights
 func processWindLayers(apiResponse *WeatherAPIResponse, timeIndex int) []WindLayer {
 	// Only use hPa-based wind data with geopotential heights
-	hPaWindLevels := []struct {
+	windLevels := []struct {
 		Speed     []float64
 		Direction []int
 		GeoHeight []float64
 	}{
-		{apiResponse.Hourly.WindSpeed1000hPa, apiResponse.Hourly.WindDirection1000hPa, apiResponse.Hourly.GeopotentialHeight1000hPa},
+		{apiResponse.Hourly.WindSpeed10m, apiResponse.Hourly.WindDirection10m, []float64{}},
+		{apiResponse.Hourly.WindSpeed80m, apiResponse.Hourly.WindDirection80m, []float64{}},
+		//{apiResponse.Hourly.WindSpeed1000hPa, apiResponse.Hourly.WindDirection1000hPa, apiResponse.Hourly.GeopotentialHeight1000hPa},
 		{apiResponse.Hourly.WindSpeed975hPa, apiResponse.Hourly.WindDirection975hPa, apiResponse.Hourly.GeopotentialHeight975hPa},
 		{apiResponse.Hourly.WindSpeed950hPa, apiResponse.Hourly.WindDirection950hPa, apiResponse.Hourly.GeopotentialHeight950hPa},
 		{apiResponse.Hourly.WindSpeed925hPa, apiResponse.Hourly.WindDirection925hPa, apiResponse.Hourly.GeopotentialHeight925hPa},
-		{apiResponse.Hourly.WindSpeed900hPa, apiResponse.Hourly.WindDirection900hPa, apiResponse.Hourly.GeopotentialHeight900hPa},
-		{apiResponse.Hourly.WindSpeed850hPa, apiResponse.Hourly.WindDirection850hPa, apiResponse.Hourly.GeopotentialHeight850hPa},
+		//{apiResponse.Hourly.WindSpeed900hPa, apiResponse.Hourly.WindDirection900hPa, apiResponse.Hourly.GeopotentialHeight900hPa},
+		//{apiResponse.Hourly.WindSpeed850hPa, apiResponse.Hourly.WindDirection850hPa, apiResponse.Hourly.GeopotentialHeight850hPa},
 		{apiResponse.Hourly.WindSpeed800hPa, apiResponse.Hourly.WindDirection800hPa, apiResponse.Hourly.GeopotentialHeight800hPa},
-		{apiResponse.Hourly.WindSpeed700hPa, apiResponse.Hourly.WindDirection700hPa, apiResponse.Hourly.GeopotentialHeight700hPa},
+		//{apiResponse.Hourly.WindSpeed700hPa, apiResponse.Hourly.WindDirection700hPa, apiResponse.Hourly.GeopotentialHeight700hPa},
 		{apiResponse.Hourly.WindSpeed600hPa, apiResponse.Hourly.WindDirection600hPa, apiResponse.Hourly.GeopotentialHeight600hPa},
 	}
 
 	var layers []WindLayer
 
 	// Process hPa-based levels only
-	for _, level := range hPaWindLevels {
-		if timeIndex < len(level.Speed) && timeIndex < len(level.Direction) && timeIndex < len(level.GeoHeight) {
+	for i, level := range windLevels {
+		if timeIndex < len(level.Speed) && timeIndex < len(level.Direction) {
 			speed := level.Speed[timeIndex]
 			direction := level.Direction[timeIndex]
-			geoHeight := level.GeoHeight[timeIndex]
+
+			geoHeight := 0.0
+			if timeIndex < len(level.GeoHeight) {
+				geoHeight = level.GeoHeight[timeIndex]
+			} else if i == 0 {
+				geoHeight = 10 // wind 10m
+			} else if i == 1 {
+				geoHeight = 80 // wind 80m
+			}
+
 			// Convert geopotential height from meters to feet (1 meter = 3.28084 feet)
 			heightFeet := int(geoHeight * 3.28084)
 
 			// Only include if we have valid data and height is within range (600-12000 feet)
-			if speed > 0 && heightFeet >= 600 && heightFeet <= 12000 {
+			if speed > 0 && heightFeet <= 12000 {
 				speedKnots := speed
 
 				symbol := getWindSymbol(speedKnots, direction)
@@ -341,45 +343,6 @@ func processWindLayers(apiResponse *WeatherAPIResponse, timeIndex int) []WindLay
 					Symbol:     symbol,
 				})
 			}
-		}
-	}
-
-	return layers
-}
-
-// processSurfaceWindLayers extracts wind data for fixed heights (10m and 80m)
-func processSurfaceWindLayers(apiResponse *WeatherAPIResponse, timeIndex int) []SurfaceWindLayer {
-	var layers []SurfaceWindLayer
-
-	// Process 10m wind data
-	if timeIndex < len(apiResponse.Hourly.WindSpeed10m) && timeIndex < len(apiResponse.Hourly.WindDirection10m) {
-		speed10m := apiResponse.Hourly.WindSpeed10m[timeIndex]
-		direction10m := apiResponse.Hourly.WindDirection10m[timeIndex]
-
-		if speed10m > 0 {
-			symbol := getWindSymbol(speed10m, direction10m)
-			layers = append(layers, SurfaceWindLayer{
-				HeightFeet: 33, // 10 meters = 33 feet
-				Speed:      speed10m,
-				Direction:  direction10m,
-				Symbol:     symbol,
-			})
-		}
-	}
-
-	// Process 80m wind data
-	if timeIndex < len(apiResponse.Hourly.WindSpeed80m) && timeIndex < len(apiResponse.Hourly.WindDirection80m) {
-		speed80m := apiResponse.Hourly.WindSpeed80m[timeIndex]
-		direction80m := apiResponse.Hourly.WindDirection80m[timeIndex]
-
-		if speed80m > 0 {
-			symbol := getWindSymbol(speed80m, direction80m)
-			layers = append(layers, SurfaceWindLayer{
-				HeightFeet: 262, // 80 meters = 262 feet
-				Speed:      speed80m,
-				Direction:  direction80m,
-				Symbol:     symbol,
-			})
 		}
 	}
 

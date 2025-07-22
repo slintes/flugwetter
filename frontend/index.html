@@ -28,12 +28,6 @@
                     <canvas id="cloudChart"></canvas>
                 </div>
 
-                <!-- Bottom Row -->
-                <div class="chart-container">
-                    <h2>Surface Wind Speed, Gusts & Direction (10m & 80m)</h2>
-                    <canvas id="surfaceWindChart"></canvas>
-                </div>
-
                 <div class="chart-container">
                     <h2>Wind Speed and Direction at Different Altitudes</h2>
                     <canvas id="windChart"></canvas>
@@ -50,9 +44,7 @@
             </div>
 
             <div class="chart-instructions">
-                <strong>Chart Layout:</strong> 2×2 Grid - Temperature (top-left), Cloud Cover (top-right), Surface Wind (bottom-left), Altitude Wind (bottom-right)
-                <br>
-                <strong>Chart Interaction:</strong> Showing next 24 hours • Use mouse wheel to zoom in/out • Click and drag to pan horizontally • All 4 charts are synchronized
+                <strong>Chart Interaction:</strong> Use mouse wheel to zoom in/out • Click and drag to pan horizontally
                 <br>
                 <button onclick="resetZoom()" style="margin-top: 10px; padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">Show All Data</button>
             </div>

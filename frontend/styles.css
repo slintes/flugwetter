@@ -11,6 +11,8 @@ body {
     color: #333;
     width: 100vw;
     overflow-x: hidden;
+    padding-left: 50px;
+    padding-right: 50px;
 }
 
 .container {
@@ -42,9 +44,9 @@ main {
 
 .charts-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
-    gap: 15px;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr 1fr;
+    gap: 30px;
     margin-bottom: 20px;
 }
 
