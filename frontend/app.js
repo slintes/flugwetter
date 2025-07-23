@@ -370,10 +370,10 @@ function initializeCharts() {
                                 element.y >= chartArea.top && element.y <= chartArea.bottom) {
                                 
                                 // Calculate transparency based on coverage (0% = transparent, 100% = opaque)
-                                const alpha = 0.1 + (point.coverage / 100 * 0.9);
+                                const alpha = 0.1 + (point.coverage / 100 * 0.8);
                                 
                                 // Calculate base size for the cloud (slightly larger for a nicer appearance)
-                                const baseSize = 9;
+                                const baseSize = 7;
                                 
                                 // Draw a more realistic cloud shape with transparency based on coverage
                                 const x = element.x;
@@ -451,7 +451,7 @@ function initializeCharts() {
                     dataset.data.forEach((point, index) => {
                         if (point && point.y !== undefined) {
                             const xPos = chart.scales.x.getPixelForValue(point.x);
-                            const yPos = chartArea.top + (chartArea.bottom - chartArea.top) * 0.65;
+                            const yPos = chartArea.top + (chartArea.bottom - chartArea.top) * 0.8;
 
                             // Skip if outside visible area
                             if (xPos < chartArea.left || xPos > chartArea.right) {
@@ -558,8 +558,8 @@ function initializeCharts() {
                 y: {
                     type: 'logarithmic',
                     position: 'left',
-                    min: 100, // Start from 100ft for low-level clouds
-                    max: 24000, // Max altitude 24,000ft
+                    min: 300, // Start from 100ft for low-level clouds
+                    max: 12000, // Max altitude
                     grid: {
                         color: 'rgba(0,0,0,0.1)'
                     },

@@ -22,23 +22,23 @@ var EDDG = Location{
 // WeatherAPIResponse represents the complete API response from open-meteo
 type WeatherAPIResponse struct {
 	Hourly struct {
-		Time                     []string  `json:"time"`
-		Temperature2m            []float64 `json:"temperature_2m"`
-		DewPoint2m               []float64 `json:"dew_point_2m"`
-		PrecipitationProbability []int     `json:"precipitation_probability"`
-		CloudCoverLow            []int     `json:"cloud_cover_low"`
-		CloudCover               []int     `json:"cloud_cover"`
-		CloudCoverMid            []int     `json:"cloud_cover_mid"`
-		CloudCoverHigh           []int     `json:"cloud_cover_high"`
-		Precipitation            []float64 `json:"precipitation"`
-		WindSpeed10m             []float64 `json:"wind_speed_10m"`
-		WindDirection10m         []int     `json:"wind_direction_10m"`
-		WindGusts10m             []float64 `json:"wind_gusts_10m"`
-		WindSpeed80m             []float64 `json:"wind_speed_80m"`
-		WindDirection80m         []int     `json:"wind_direction_80m"`
-		Pressure                 []float64 `json:"pressure_msl"`
-		RelativeHumidity2m       []int     `json:"relative_humidity_2m"`
-		Visibility               []float64 `json:"visibility"`
+		Time                     []string   `json:"time"`
+		Temperature2m            []float64  `json:"temperature_2m"`
+		DewPoint2m               []float64  `json:"dew_point_2m"`
+		PrecipitationProbability []int      `json:"precipitation_probability"`
+		CloudCoverLow            []int      `json:"cloud_cover_low"`
+		CloudCover               []int      `json:"cloud_cover"`
+		CloudCoverMid            []int      `json:"cloud_cover_mid"`
+		CloudCoverHigh           []int      `json:"cloud_cover_high"`
+		Precipitation            []float64  `json:"precipitation"`
+		WindSpeed10m             []float64  `json:"wind_speed_10m"`
+		WindDirection10m         []int      `json:"wind_direction_10m"`
+		WindGusts10m             []float64  `json:"wind_gusts_10m"`
+		WindSpeed80m             []float64  `json:"wind_speed_80m"`
+		WindDirection80m         []int      `json:"wind_direction_80m"`
+		Pressure                 []float64  `json:"pressure_msl"`
+		RelativeHumidity2m       []int      `json:"relative_humidity_2m"`
+		Visibility               []*float64 `json:"visibility,omitempty"`
 
 		// hPa-based wind data
 		WindSpeed1000hPa []float64 `json:"wind_speed_1000hPa"`
@@ -201,11 +201,12 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 		cloudLayers := processCloudLayers(apiResponse, i)
 
 		// Get visibility data if available
-		var visibility float64
-		if i < len(apiResponse.Hourly.Visibility) {
-			visibility = apiResponse.Hourly.Visibility[i]
+		var visibility *float64 = nil
+		if i < len(apiResponse.Hourly.Visibility) && apiResponse.Hourly.Visibility[i] != nil {
 			// Convert visibility from meters to kilometers
-			visibility = visibility / 1000
+			v := *apiResponse.Hourly.Visibility[i]
+			v = v / 1000
+			visibility = &v
 		}
 
 		cloudBase := getCloudBase(cloudLayers)
@@ -387,7 +388,7 @@ func getCloudBase(cloudLayers []CloudLayer) *int {
 
 // calculateVFRProbability calculates the VFR probability based on weather conditions
 // Returns a percentage value (0-100)
-func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility float64, tempPoint TemperaturePoint, timeStr string) int {
+func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility *float64, tempPoint TemperaturePoint, timeStr string) int {
 
 	timeStr += ":00Z"
 	t, err := time.Parse(time.RFC3339, timeStr)
@@ -442,15 +443,20 @@ func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility float
 	}
 
 	// Visibility rules
-	if visibility < 5 {
-		// When visibility below 5km, VFR is 0%
-		return 0
-	} else if visibility < 10 {
-		// When visibility below 10km, subtract 50%
-		probability -= 60
-	} else if visibility < 20 {
-		// When visibility below 20km, subtract 25%
-		probability -= 30
+	if visibility != nil {
+		if *visibility < 5 {
+			// When visibility below 5km, VFR is 0%
+			return 0
+		} else if *visibility < 10 {
+			// When visibility below 10km, subtract 50%
+			probability -= 60
+		} else if *visibility < 20 {
+			// When visibility below 20km, subtract 25%
+			probability -= 30
+		}
+	} else {
+		// somehow mark that we don't have visibilty....
+		probability -= 11
 	}
 
 	// Precipitation rules
