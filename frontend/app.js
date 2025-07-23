@@ -7,17 +7,70 @@ let vfrChart;
 document.addEventListener('DOMContentLoaded', function() {
     initializeCharts();
     loadWeatherData();
-    
+    resetZoom(24)
+
     // Set up manual pan/zoom after charts are created
     setTimeout(setupManualPanZoom, 1000);
 });
 
-
-
 function initializeCharts() {
     // VFR Chart
     const vfrCtx = document.getElementById('vfrChart').getContext('2d');
-    
+
+    xAxisConfig = function(drawOnChartArea){
+        return {
+            type: 'time',
+            distribution: 'linear',
+            time: {
+                parser: 'YYYY-MM-DDTHH:mm',
+                unit: 'hour',
+                stepSize: 1,
+                displayFormats: {
+                    hour: 'MMM dd HH:mm'
+                }
+            },
+            grid: {
+                drawOnChartArea: drawOnChartArea,
+                z: -1,
+                color: 'rgba(0,0,0,0.3)'
+            },
+            title: {
+                display: false
+            },
+            ticks: {
+                callback: function(value, index, values) {
+                    const date = new Date(value);
+                    // Show tick if it's at 0, 3, 6, 9, 12, 15, 18, 21 hours
+                    if (date.getHours() % 3 === 0) {
+                        if (date.getHours() === 0) {
+                            // For midnight, show date and time
+                            return date.toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric'
+                            }) + '\n' + date.toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                hour12: false
+                            });
+                        } else {
+                            // For other hours, show time only
+                            return date.toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                hour12: false
+                            });
+                        }
+                    }
+                    return '';
+                },
+                maxRotation: 45,
+                autoSkip: false,
+            },
+        }
+    }
+
+
+
     // Custom plugin to draw vfr text with color coding
     Chart.register({
         id: 'vfrText',
@@ -104,53 +157,7 @@ function initializeCharts() {
                     min: 0,
                     max: 1
                 },
-                x: {
-                    type: 'time',
-                    time: {
-                        parser: 'YYYY-MM-DDTHH:mm',
-                        unit: 'hour',
-                        stepSize: 3,
-                        displayFormats: {
-                            hour: 'MMM dd HH:mm'
-                        }
-                    },
-                    min: new Date(),
-                    max: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
-                    grid: {
-                        color: 'rgba(0,0,0,0.3)'
-                    },
-                    title: {
-                        display: false
-                    },
-                    ticks: {
-                        callback: function(value, index, values) {
-                            const date = new Date(value);
-                            // Show tick if it's at 0, 3, 6, 9, 12, 15, 18, 21 hours
-                            if (date.getHours() % 3 === 0) {
-                                if (date.getHours() === 0) {
-                                    // For midnight, show date and time
-                                    return date.toLocaleDateString('en-US', { 
-                                        month: 'short', 
-                                        day: 'numeric' 
-                                    }) + '\n' + date.toLocaleTimeString('en-US', { 
-                                        hour: '2-digit', 
-                                        minute: '2-digit',
-                                        hour12: false 
-                                    });
-                                } else {
-                                    // For other hours, show time only
-                                    return date.toLocaleTimeString('en-US', { 
-                                        hour: '2-digit', 
-                                        minute: '2-digit',
-                                        hour12: false 
-                                    });
-                                }
-                            }
-                            return '';
-                        },
-                        maxRotation: 45
-                    }
-                }
+                x: xAxisConfig(false),
             },
             plugins: {
                 legend: {
@@ -292,53 +299,7 @@ function initializeCharts() {
                         drawOnChartArea: false,
                     }
                 },
-                x: {
-                    type: 'time',
-                    time: {
-                        parser: 'YYYY-MM-DDTHH:mm',
-                        unit: 'hour',
-                        stepSize: 3,
-                        displayFormats: {
-                            hour: 'MMM dd HH:mm'
-                        }
-                    },
-                    min: new Date(),
-                    max: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
-                    grid: {
-                        color: 'rgba(0,0,0,0.3)'
-                    },
-                    title: {
-                        display: false
-                    },
-                    ticks: {
-                        callback: function(value, index, values) {
-                            const date = new Date(value);
-                            // Show tick if it's at 0, 3, 6, 9, 12, 15, 18, 21 hours
-                            if (date.getHours() % 3 === 0) {
-                                if (date.getHours() === 0) {
-                                    // For midnight, show date and time
-                                    return date.toLocaleDateString('en-US', { 
-                                        month: 'short', 
-                                        day: 'numeric' 
-                                    }) + '\n' + date.toLocaleTimeString('en-US', { 
-                                        hour: '2-digit', 
-                                        minute: '2-digit',
-                                        hour12: false 
-                                    });
-                                } else {
-                                    // For other hours, show time only
-                                    return date.toLocaleTimeString('en-US', { 
-                                        hour: '2-digit', 
-                                        minute: '2-digit',
-                                        hour12: false 
-                                    });
-                                }
-                            }
-                            return '';
-                        },
-                        maxRotation: 45
-                    }
-                }
+                x: xAxisConfig(true),
             },
             plugins: {
                 legend: {
@@ -505,13 +466,17 @@ function initializeCharts() {
                             // Color coding based on height
                             let textColor;
                             if (point.y < 10) {
-                                textColor = '#e74c3c'; // Red for < 1000ft
+                                textColor = 'rgb(255,0,0)'; // Red for < 1000ft
+                            } else if (point.y < 15) {
+                                textColor = 'rgb(255,66,0)'; // Orange for 1000-2000ft
                             } else if (point.y < 20) {
-                                textColor = '#e67e22'; // Orange for 1000-2000ft
+                                textColor = 'rgb(255,196,0)'; // Orange for 1000-2000ft
+                            } else if (point.y < 25) {
+                                textColor = 'rgb(174,225,18)'; // Light green for 2000-3000ft
                             } else if (point.y < 30) {
-                                textColor = '#2ecc71'; // Light green for 2000-3000ft
+                                textColor = 'rgba(28,221,28,0.7)'; // Light green for 2000-3000ft
                             } else {
-                                textColor = '#27ae60'; // Dark green for > 3000ft
+                                textColor = 'rgba(0, 150, 0, 0.4)'; // Dark green for > 3000ft
                             }
 
                             ctx.fillStyle = textColor;
@@ -545,8 +510,8 @@ function initializeCharts() {
                 ctx.beginPath();
                 ctx.moveTo(chartArea.left, yPosition);
                 ctx.lineTo(chartArea.right, yPosition);
-                ctx.lineWidth = 1;
-                ctx.strokeStyle = 'rgba(0, 255, 0, 0.6)'; // semi-transparent light green
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = 'rgba(0, 150, 0, 0.2)';
                 ctx.stroke();
                 ctx.restore();
             }
@@ -629,53 +594,7 @@ function initializeCharts() {
                         }
                     }
                 },
-                x: {
-                    type: 'time',
-                    time: {
-                        parser: 'YYYY-MM-DDTHH:mm',
-                        unit: 'hour',
-                        stepSize: 3,
-                        displayFormats: {
-                            hour: 'MMM dd HH:mm'
-                        }
-                    },
-                    min: new Date(),
-                    max: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
-                    grid: {
-                        color: 'rgba(0,0,0,0.3)'
-                    },
-                    title: {
-                        display: false
-                    },
-                    ticks: {
-                        callback: function(value, index, values) {
-                            const date = new Date(value);
-                            // Show tick if it's at 0, 3, 6, 9, 12, 15, 18, 21 hours
-                            if (date.getHours() % 3 === 0) {
-                                if (date.getHours() === 0) {
-                                    // For midnight, show date and time
-                                    return date.toLocaleDateString('en-US', { 
-                                        month: 'short', 
-                                        day: 'numeric' 
-                                    }) + '\n' + date.toLocaleTimeString('en-US', { 
-                                        hour: '2-digit', 
-                                        minute: '2-digit',
-                                        hour12: false 
-                                    });
-                                } else {
-                                    // For other hours, show time only
-                                    return date.toLocaleTimeString('en-US', { 
-                                        hour: '2-digit', 
-                                        minute: '2-digit',
-                                        hour12: false 
-                                    });
-                                }
-                            }
-                            return '';
-                        },
-                        maxRotation: 45
-                    }
-                }
+                x: xAxisConfig(true),
             },
             plugins: {
                 legend: {
@@ -867,8 +786,8 @@ function initializeCharts() {
                 ctx.beginPath();
                 ctx.moveTo(chartArea.left, yPosition);
                 ctx.lineTo(chartArea.right, yPosition);
-                ctx.lineWidth = 1;
-                ctx.strokeStyle = 'rgba(0, 255, 0, 0.6)'; // semi-transparent light green
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = 'rgba(0, 150, 0, 0.3)';
                 ctx.stroke();
                 ctx.restore();
             }
@@ -954,53 +873,7 @@ function initializeCharts() {
                         }
                     }
                 },
-                x: {
-                    type: 'time',
-                    time: {
-                        parser: 'YYYY-MM-DDTHH:mm',
-                        unit: 'hour',
-                        stepSize: 3,
-                        displayFormats: {
-                            hour: 'MMM dd HH:mm'
-                        }
-                    },
-                    min: new Date(),
-                    max: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
-                    grid: {
-                        color: 'rgba(0,0,0,0.3)'
-                    },
-                    title: {
-                        display: false
-                    },
-                    ticks: {
-                        callback: function(value, index, values) {
-                            const date = new Date(value);
-                            // Show tick if it's at 0, 3, 6, 9, 12, 15, 18, 21 hours
-                            if (date.getHours() % 3 === 0) {
-                                if (date.getHours() === 0) {
-                                    // For midnight, show date and time
-                                    return date.toLocaleDateString('en-US', { 
-                                        month: 'short', 
-                                        day: 'numeric' 
-                                    }) + '\n' + date.toLocaleTimeString('en-US', { 
-                                        hour: '2-digit', 
-                                        minute: '2-digit',
-                                        hour12: false 
-                                    });
-                                } else {
-                                    // For other hours, show time only
-                                    return date.toLocaleTimeString('en-US', { 
-                                        hour: '2-digit', 
-                                        minute: '2-digit',
-                                        hour12: false 
-                                    });
-                                }
-                            }
-                            return '';
-                        },
-                        maxRotation: 45
-                    }
-                }
+                x: xAxisConfig(true),
             },
             plugins: {
                 legend: {

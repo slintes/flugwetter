@@ -81,13 +81,15 @@ canvas {
     flex-grow: 1;
 }
 
-.cloud-base-container {
-    min-height: 200px;
+.vfr-container {
+    min-height: 120px;
 }
 
-.cloud-base-container canvas {
+.vfr-container canvas {
     min-height: 120px;
-    max-height: 150px;
+    max-height: 120px;
+    padding-left: 50px;
+    padding-right: 80px;
 }
 
 .chart-legend {

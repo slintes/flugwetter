@@ -421,9 +421,11 @@ func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility float
 		if *cloudBase < 10 {
 			return 0
 		} else if *cloudBase < 15 {
-			probability -= 30
+			probability -= 50
 		} else if *cloudBase < 20 {
-			probability -= 30
+			probability -= 40
+		} else if *cloudBase < 25 {
+			probability -= 25
 		} else if *cloudBase < 30 {
 			probability -= 15
 		}
