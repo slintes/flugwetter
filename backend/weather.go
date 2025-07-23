@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"sync"
 	"time"
 )
@@ -171,7 +170,6 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 		TemperatureData: make([]TemperaturePoint, 0),
 		CloudData:       make([]CloudPoint, 0),
 		WindData:        make([]WindPoint, 0),
-		CloudBaseData:   make([]CloudBasePoint, 0),
 	}
 
 	// Process temperature and cloud data
@@ -203,19 +201,8 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 			Time:        timeStr,
 			CloudLayers: cloudLayers,
 			Visibility:  visibility,
+			Base:        getCloudBase(cloudLayers),
 		})
-
-		// Calculate cloud base for this time point
-		cloudBase, err := getCloudBase(cloudLayers)
-		if err == nil {
-			// Only include valid cloud base values (not -1)
-			if cloudBase != -1 {
-				processed.CloudBaseData = append(processed.CloudBaseData, CloudBasePoint{
-					Time:       timeStr,
-					HeightFeet: cloudBase,
-				})
-			}
-		}
 
 		// Get 10m wind speed and gusts for line chart
 		var windSpeed10m, windGusts10m float64
@@ -372,24 +359,17 @@ func getWindSymbol(speedKnots float64, direction int) string {
 	return "barb"
 }
 
-// getCloudBase calculates the cloud base (lowest cloud coverage >= 50%) for a given time
-// Returns the height in feet, or -1 if no cloud base found
-func getCloudBase(cloudLayers []CloudLayer) (int, error) {
-	// Sort cloud layers by height (lowest first)
-	layers := make([]CloudLayer, len(cloudLayers))
-	copy(layers, cloudLayers)
-
-	sort.Slice(layers, func(i, j int) bool {
-		return layers[i].HeightFeet < layers[j].HeightFeet
-	})
-
-	// Find the lowest layer with coverage >= 50%
-	for _, layer := range layers {
-		if layer.Coverage >= 50 {
-			return layer.HeightFeet, nil
+// getCloudBase calculates the cloud base
+// Returns the height as flight level if any
+func getCloudBase(cloudLayers []CloudLayer) *int {
+	// Find the lowest layer with coverage >= 40%
+	for _, layer := range cloudLayers {
+		if layer.Coverage >= 40 {
+			feet := layer.HeightFeet
+			fl := feet / 100
+			return &fl
 		}
 	}
-
-	// No cloud base found (no layer with >= 50% coverage)
-	return -1, nil
+	// No cloud base found
+	return nil
 }
