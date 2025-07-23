@@ -1,6 +1,7 @@
 let temperatureChart;
 let cloudChart;
 let windChart;
+let cloudBaseChart;
 
 // Initialize charts when page loads
 document.addEventListener('DOMContentLoaded', function() {
@@ -14,6 +15,160 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 function initializeCharts() {
+    // Cloud Base Chart
+    const cloudBaseCtx = document.getElementById('cloudBaseChart').getContext('2d');
+    
+    // Custom plugin to draw cloud base text with color coding
+    Chart.register({
+        id: 'cloudBaseText',
+        afterDatasetsDraw: function(chart) {
+            if (chart.canvas.id === 'cloudBaseChart') {
+                const ctx = chart.ctx;
+                const chartArea = chart.chartArea;
+                
+                // Save the current context state
+                ctx.save();
+                
+                // Clip to chart area to prevent drawing outside
+                ctx.beginPath();
+                ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+                ctx.clip();
+                
+                chart.data.datasets[0].data.forEach((point) => {
+                    if (point && point.y !== undefined) {
+                        const meta = chart.getDatasetMeta(0);
+                        const xPos = chart.scales.x.getPixelForValue(point.x);
+                        const yPos = chartArea.top + (chartArea.bottom - chartArea.top) / 2;
+                        
+                        // Skip if outside visible area
+                        if (xPos < chartArea.left || xPos > chartArea.right) {
+                            return;
+                        }
+                        
+                        // Set text style
+                        ctx.font = 'bold 14px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        
+                        // Color coding based on height
+                        let textColor;
+                        if (point.y < 1000) {
+                            textColor = '#e74c3c'; // Red for < 1000ft
+                        } else if (point.y < 2000) {
+                            textColor = '#e67e22'; // Orange for 1000-2000ft
+                        } else if (point.y < 3000) {
+                            textColor = '#2ecc71'; // Light green for 2000-3000ft
+                        } else {
+                            textColor = '#27ae60'; // Dark green for > 3000ft
+                        }
+                        
+                        ctx.fillStyle = textColor;
+                        
+                        // Draw the text
+                        ctx.fillText(point.y + ' ft', xPos, yPos);
+                    }
+                });
+                
+                // Restore the context state
+                ctx.restore();
+            }
+        }
+    });
+    
+    cloudBaseChart = new Chart(cloudBaseCtx, {
+        type: 'line',
+        data: {
+            datasets: [{
+                label: 'Cloud Base',
+                data: [],
+                borderColor: 'transparent',
+                backgroundColor: 'transparent',
+                pointRadius: 0,
+                pointHoverRadius: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            events: ['mousedown', 'mousemove', 'mouseup', 'click', 'mouseover', 'mouseout', 'wheel'],
+            scales: {
+                y: {
+                    display: false, // No y-axis as per requirements
+                    min: 0,
+                    max: 1
+                },
+                x: {
+                    type: 'time',
+                    time: {
+                        parser: 'YYYY-MM-DDTHH:mm',
+                        unit: 'hour',
+                        stepSize: 3,
+                        displayFormats: {
+                            hour: 'MMM dd HH:mm'
+                        }
+                    },
+                    min: new Date(),
+                    max: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
+                    grid: {
+                        color: 'rgba(0,0,0,0.3)'
+                    },
+                    title: {
+                        display: false
+                    },
+                    ticks: {
+                        callback: function(value, index, values) {
+                            const date = new Date(value);
+                            // Show tick if it's at 0, 3, 6, 9, 12, 15, 18, 21 hours
+                            if (date.getHours() % 3 === 0) {
+                                if (date.getHours() === 0) {
+                                    // For midnight, show date and time
+                                    return date.toLocaleDateString('en-US', { 
+                                        month: 'short', 
+                                        day: 'numeric' 
+                                    }) + '\n' + date.toLocaleTimeString('en-US', { 
+                                        hour: '2-digit', 
+                                        minute: '2-digit',
+                                        hour12: false 
+                                    });
+                                } else {
+                                    // For other hours, show time only
+                                    return date.toLocaleTimeString('en-US', { 
+                                        hour: '2-digit', 
+                                        minute: '2-digit',
+                                        hour12: false 
+                                    });
+                                }
+                            }
+                            return '';
+                        },
+                        maxRotation: 45
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false // No legend needed
+                },
+                tooltip: {
+                    callbacks: {
+                        title: function(context) {
+                            // Display time in local timezone with date and time
+                            return new Date(context[0].parsed.x).toLocaleString();
+                        },
+                        label: function(context) {
+                            const point = context.raw;
+                            return `Cloud Base: ${point.y} ft`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
     // Temperature Chart
     const tempCtx = document.getElementById('temperatureChart').getContext('2d');
     temperatureChart = new Chart(tempCtx, {
@@ -863,6 +1018,24 @@ async function loadWeatherData() {
 }
 
 function updateCharts(data) {
+    // Update cloud base chart with time-based data
+    const cloudBaseData = [];
+    
+    if (data.cloud_base_data) {
+        data.cloud_base_data.forEach(point => {
+            // Convert UTC time string to local timezone Date object
+            const timeValue = new Date(point.time + 'Z').getTime(); // Add 'Z' to indicate UTC
+            
+            cloudBaseData.push({
+                x: timeValue,
+                y: point.height_feet
+            });
+        });
+    }
+    
+    cloudBaseChart.data.datasets[0].data = cloudBaseData;
+    cloudBaseChart.update();
+    
     // Update temperature chart with time-based data
     // Convert UTC time strings to local timezone Date objects
     const tempData = data.temperature_data.map(point => ({
@@ -976,6 +1149,9 @@ setInterval(refreshData, 900000);
 
 // Function to reset zoom on all charts
 function resetZoom(hours) {
+    if (cloudBaseChart) {
+        resetChartZoom(cloudBaseChart, hours);
+    }
     if (temperatureChart) {
         resetChartZoom(temperatureChart, hours);
     }
@@ -1003,6 +1179,9 @@ function resetChartZoom(chart, hours) {
 
 // Manual pan/zoom setup function
 function setupManualPanZoom() {
+    if (cloudBaseChart) {
+        addManualPanZoom(cloudBaseChart, 'CloudBase');
+    }
     if (temperatureChart) {
         addManualPanZoom(temperatureChart, 'Temperature');
     }
@@ -1052,12 +1231,19 @@ function addManualPanZoom(chart, chartName) {
         if (chart === temperatureChart) {
             if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
             if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
+            if (cloudBaseChart) syncManualPan(cloudBaseChart, xAxis.options.min, xAxis.options.max);
         } else if (chart === cloudChart) {
             if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
             if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
+            if (cloudBaseChart) syncManualPan(cloudBaseChart, xAxis.options.min, xAxis.options.max);
         } else if (chart === windChart) {
             if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
             if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
+            if (cloudBaseChart) syncManualPan(cloudBaseChart, xAxis.options.min, xAxis.options.max);
+        } else if (chart === cloudBaseChart) {
+            if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
+            if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
+            if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
         }
     });
     
@@ -1091,12 +1277,19 @@ function addManualPanZoom(chart, chartName) {
         if (chart === temperatureChart) {
             if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
             if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
+            if (cloudBaseChart) syncManualPan(cloudBaseChart, xAxis.options.min, xAxis.options.max);
         } else if (chart === cloudChart) {
             if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
             if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
+            if (cloudBaseChart) syncManualPan(cloudBaseChart, xAxis.options.min, xAxis.options.max);
         } else if (chart === windChart) {
             if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
             if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
+            if (cloudBaseChart) syncManualPan(cloudBaseChart, xAxis.options.min, xAxis.options.max);
+        } else if (chart === cloudBaseChart) {
+            if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
+            if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
+            if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
         }
         
 

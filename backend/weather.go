@@ -171,6 +171,7 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 		TemperatureData: make([]TemperaturePoint, 0),
 		CloudData:       make([]CloudPoint, 0),
 		WindData:        make([]WindPoint, 0),
+		CloudBaseData:   make([]CloudBasePoint, 0),
 	}
 
 	// Process temperature and cloud data
@@ -203,6 +204,18 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 			CloudLayers: cloudLayers,
 			Visibility:  visibility,
 		})
+
+		// Calculate cloud base for this time point
+		cloudBase, err := getCloudBase(cloudLayers)
+		if err == nil {
+			// Only include valid cloud base values (not -1)
+			if cloudBase != -1 {
+				processed.CloudBaseData = append(processed.CloudBaseData, CloudBasePoint{
+					Time:       timeStr,
+					HeightFeet: cloudBase,
+				})
+			}
+		}
 
 		// Get 10m wind speed and gusts for line chart
 		var windSpeed10m, windGusts10m float64
@@ -359,30 +372,12 @@ func getWindSymbol(speedKnots float64, direction int) string {
 	return "barb"
 }
 
-// GetCloudBase calculates the cloud base (lowest cloud coverage >= 50%) for a given time
+// getCloudBase calculates the cloud base (lowest cloud coverage >= 50%) for a given time
 // Returns the height in feet, or -1 if no cloud base found
-func GetCloudBase(timeStr string) (int, error) {
-	data, err := GetWeatherData()
-	if err != nil {
-		return -1, fmt.Errorf("failed to get weather data: %w", err)
-	}
-
-	// Find the cloud data for the specified time
-	var cloudPoint *CloudPoint
-	for _, cp := range data.CloudData {
-		if cp.Time == timeStr {
-			cloudPoint = &cp
-			break
-		}
-	}
-
-	if cloudPoint == nil {
-		return -1, fmt.Errorf("no cloud data found for time: %s", timeStr)
-	}
-
+func getCloudBase(cloudLayers []CloudLayer) (int, error) {
 	// Sort cloud layers by height (lowest first)
-	layers := make([]CloudLayer, len(cloudPoint.CloudLayers))
-	copy(layers, cloudPoint.CloudLayers)
+	layers := make([]CloudLayer, len(cloudLayers))
+	copy(layers, cloudLayers)
 
 	sort.Slice(layers, func(i, j int) bool {
 		return layers[i].HeightFeet < layers[j].HeightFeet

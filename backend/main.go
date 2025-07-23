@@ -26,6 +26,12 @@ type ProcessedWeatherData struct {
 	TemperatureData []TemperaturePoint `json:"temperature_data"`
 	CloudData       []CloudPoint       `json:"cloud_data"`
 	WindData        []WindPoint        `json:"wind_data"`
+	CloudBaseData   []CloudBasePoint   `json:"cloud_base_data"`
+}
+
+type CloudBasePoint struct {
+	Time       string `json:"time"`
+	HeightFeet int    `json:"height_feet"`
 }
 
 type TemperaturePoint struct {

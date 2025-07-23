@@ -45,7 +45,7 @@ main {
 .charts-grid {
     display: grid;
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr 1fr;
+    grid-template-rows: auto 1fr 1fr 1fr;
     gap: 30px;
     margin-top: 10px;
     margin-bottom: 10px;
@@ -79,6 +79,15 @@ canvas {
     max-height: 350px;
     min-height: 300px;
     flex-grow: 1;
+}
+
+.cloud-base-container {
+    min-height: 200px;
+}
+
+.cloud-base-container canvas {
+    min-height: 120px;
+    max-height: 150px;
 }
 
 .chart-legend {
