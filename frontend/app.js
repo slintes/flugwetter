@@ -192,6 +192,31 @@ function initializeCharts() {
                         boxWidth: 15,
                         padding: 10
                     }
+                },
+                tooltip: {
+                    callbacks: {
+                        title: function(context) {
+                            // Display time in local timezone with date and time
+                            return new Date(context[0].parsed.x).toLocaleString();
+                        },
+                        label: function(context) {
+                            const point = context.raw;
+                            if (context.dataset.label === '2m Temperature (°C)') {
+                                return `Temperature: ${point.y.toFixed(1)}°C`;
+                            } else if (context.dataset.label === '2m Dew Point (°C)') {
+                                return `Dew Point: ${point.y.toFixed(1)}°C`;
+                            } else if (context.dataset.label === 'Precipitation (mm)') {
+                                let result = `Precipitation: ${point.y.toFixed(1)} mm`;
+                                if (point.precipitationProbability !== undefined) {
+                                    result += `, Probability: ${point.precipitationProbability}%`;
+                                }
+                                return result;
+                            } else if (context.dataset.label === 'Precipitation Probability (%)') {
+                                return `Probability: ${point.y}%`;
+                            }
+                            return '';
+                        }
+                    }
                 }
             }
         }
@@ -200,7 +225,7 @@ function initializeCharts() {
     // Cloud Cover Chart - Scatter plot with height vs time
     const cloudCtx = document.getElementById('cloudChart').getContext('2d');
     
-    // Register a custom plugin for rendering cloud symbols
+    // Register custom plugins for rendering cloud symbols and grid lines
     Chart.register({
         id: 'cloudSymbols',
         afterDatasetsDraw: function(chart) {
@@ -309,6 +334,30 @@ function initializeCharts() {
         }
     });
     
+    // Register a custom plugin for drawing the 200ft grid line in the cloud chart
+    Chart.register({
+        id: 'cloudGridLines',
+        afterDraw: function(chart) {
+            if (chart.canvas.id === 'cloudChart') {
+                const ctx = chart.ctx;
+                const chartArea = chart.chartArea;
+                const yScale = chart.scales.y;
+                
+                // Draw the 2000ft grid line
+                const yPosition = yScale.getPixelForValue(2000);
+                
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(chartArea.left, yPosition);
+                ctx.lineTo(chartArea.right, yPosition);
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = 'rgba(0, 255, 0, 0.6)'; // semi-transparent light green
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    });
+    
     cloudChart = new Chart(cloudCtx, {
         type: 'scatter',
         data: {
@@ -323,8 +372,8 @@ function initializeCharts() {
                 type: 'line',
                 label: 'Visibility (km)',
                 data: [],
-                borderColor: '#cb2e12',
-                backgroundColor: 'rgba(108, 92, 231, 0.1)',
+                borderColor: '#e17055',
+                backgroundColor: 'rgba(225, 112, 85, 0.1)',
                 borderWidth: 3,
                 fill: false,
                 tension: 0.4,
@@ -441,6 +490,7 @@ function initializeCharts() {
                 tooltip: {
                     callbacks: {
                         title: function(context) {
+                            // Display time in local timezone with date and time
                             return new Date(context[0].parsed.x).toLocaleString();
                         },
                         label: function(context) {
@@ -563,7 +613,7 @@ function initializeCharts() {
     // Wind Chart - Similar to cloud chart but for wind data
     const windCtx = document.getElementById('windChart').getContext('2d');
     
-    // Register a custom plugin for rendering wind barbs
+    // Register custom plugins for rendering wind barbs and grid lines
     Chart.register({
         id: 'windBarbs',
         afterDatasetsDraw: function(chart) {
@@ -600,6 +650,30 @@ function initializeCharts() {
         }
     });
     
+    // Register a custom plugin for drawing the 10kt grid line in the wind chart
+    Chart.register({
+        id: 'windGridLines',
+        afterDraw: function(chart) {
+            if (chart.canvas.id === 'windChart') {
+                const ctx = chart.ctx;
+                const chartArea = chart.chartArea;
+                const y1Scale = chart.scales.y1;
+                
+                // Draw the 10kt grid line
+                const yPosition = y1Scale.getPixelForValue(10);
+                
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(chartArea.left, yPosition);
+                ctx.lineTo(chartArea.right, yPosition);
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = 'rgba(0, 255, 0, 0.6)'; // semi-transparent light green
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    });
+    
     windChart = new Chart(windCtx, {
         type: 'scatter',
         data: {
@@ -614,8 +688,8 @@ function initializeCharts() {
                 type: 'line',
                 label: 'Wind Speed 10m (kn)',
                 data: [],
-                borderColor: '#00b894',
-                backgroundColor: 'rgba(0, 184, 148, 0.1)',
+                borderColor: '#e17055',
+                backgroundColor: 'rgba(225, 112, 85, 0.1)',
                 borderWidth: 3,
                 fill: false,
                 tension: 0.4,
@@ -739,15 +813,23 @@ function initializeCharts() {
                     }
                 },
                 tooltip: {
-                    // callbacks: {
-                    //     title: function(context) {
-                    //         return new Date(context[0].parsed.x).toLocaleString();
-                    //     },
-                    //     label: function(context) {
-                    //         const point = context.raw;
-                    //         return `Height: ${point.y}ft, Speed: ${point.speed.toFixed(1)} kn, Direction: ${point.direction}° (${getWindDirectionName(point.direction)})`;
-                    //     }
-                    // }
+                    callbacks: {
+                        title: function(context) {
+                            // Display time in local timezone with date and time
+                            return new Date(context[0].parsed.x).toLocaleString();
+                        },
+                        label: function(context) {
+                            const point = context.raw;
+                            if (context.dataset.label === 'Wind Layers') {
+                                return `Height: ${point.y}ft, Speed: ${point.speed.toFixed(1)} kn, Direction: ${point.direction}° (${getWindDirectionName(point.direction)})`;
+                            } else if (context.dataset.label === 'Wind Speed 10m (kn)') {
+                                return `Wind Speed: ${point.y.toFixed(1)} kn`;
+                            } else if (context.dataset.label === 'Wind Gusts 10m (kn)') {
+                                return `Wind Gusts: ${point.y.toFixed(1)} kn`;
+                            }
+                            return '';
+                        }
+                    }
                 }
             }
         }
@@ -782,24 +864,25 @@ async function loadWeatherData() {
 
 function updateCharts(data) {
     // Update temperature chart with time-based data
+    // Convert UTC time strings to local timezone Date objects
     const tempData = data.temperature_data.map(point => ({
-        x: new Date(point.time).getTime(),
+        x: new Date(point.time + 'Z').getTime(), // Add 'Z' to indicate UTC
         y: point.temperature
     }));
     
     const dewPointData = data.temperature_data.map(point => ({
-        x: new Date(point.time).getTime(),
+        x: new Date(point.time + 'Z').getTime(), // Add 'Z' to indicate UTC
         y: point.dew_point
     }));
     
     const precipitationData = data.temperature_data.map(point => ({
-        x: new Date(point.time).getTime(),
+        x: new Date(point.time + 'Z').getTime(), // Add 'Z' to indicate UTC
         y: point.precipitation,
         precipitationProbability: point.precipitation_probability // Include probability for scriptable functions
     }));
     
     const precipitationProbabilityData = data.temperature_data.map(point => ({
-        x: new Date(point.time).getTime(),
+        x: new Date(point.time + 'Z').getTime(), // Add 'Z' to indicate UTC
         y: point.precipitation_probability
     }));
     
@@ -815,7 +898,8 @@ function updateCharts(data) {
     const visibilityData = [];
     
     data.cloud_data.forEach(timePoint => {
-        const timeValue = new Date(timePoint.time).getTime();
+        // Convert UTC time string to local timezone Date object
+        const timeValue = new Date(timePoint.time + 'Z').getTime(); // Add 'Z' to indicate UTC
         
         // Process cloud layers
         if (timePoint.cloud_layers) {
@@ -849,7 +933,8 @@ function updateCharts(data) {
 
     if (data.wind_data) {
         data.wind_data.forEach(timePoint => {
-            const timeValue = new Date(timePoint.time).getTime();
+            // Convert UTC time string to local timezone Date object
+            const timeValue = new Date(timePoint.time + 'Z').getTime(); // Add 'Z' to indicate UTC
             
             timePoint.wind_layers.forEach(layer => {
                 windScatterData.push({
