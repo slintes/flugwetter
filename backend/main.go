@@ -26,6 +26,7 @@ type ProcessedWeatherData struct {
 	TemperatureData []TemperaturePoint `json:"temperature_data"`
 	CloudData       []CloudPoint       `json:"cloud_data"`
 	WindData        []WindPoint        `json:"wind_data"`
+	VfrData         []VfrPoint         `json:"vfr_data"`
 }
 
 type TemperaturePoint struct {
@@ -44,9 +45,8 @@ type CloudPoint struct {
 }
 
 type CloudLayer struct {
-	HeightFeet int    `json:"height_feet"`
-	Coverage   int    `json:"coverage"`
-	Symbol     string `json:"symbol"`
+	HeightFeet int `json:"height_feet"`
+	Coverage   int `json:"coverage"`
 }
 
 type WindPoint struct {
@@ -61,6 +61,11 @@ type WindLayer struct {
 	Speed      float64 `json:"speed"`
 	Direction  int     `json:"direction"`
 	Symbol     string  `json:"symbol"`
+}
+
+type VfrPoint struct {
+	Time        string `json:"time"`
+	Probability int    `json:"probability"`
 }
 
 func main() {

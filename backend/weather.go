@@ -9,6 +9,16 @@ import (
 	"time"
 )
 
+type Location struct {
+	Latitude  string
+	Longitude string
+}
+
+var EDDG = Location{
+	Latitude:  "52.13499946",
+	Longitude: "7.684830594",
+}
+
 // WeatherAPIResponse represents the complete API response from open-meteo
 type WeatherAPIResponse struct {
 	Hourly struct {
@@ -105,7 +115,7 @@ type WeatherCache struct {
 var (
 	cache         = &WeatherCache{}
 	cacheDuration = 15 * time.Minute
-	apiURL        = "https://api.open-meteo.com/v1/forecast?latitude=52.13499946&longitude=7.684830594&hourly=precipitation_probability,pressure_msl,cloud_cover_low,cloud_cover,cloud_cover_mid,cloud_cover_high,wind_speed_120m,wind_speed_180m,wind_direction_120m,wind_direction_180m,temperature_180m,temperature_120m,temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,rain,showers,snowfall,snow_depth,weather_code,surface_pressure,visibility,wind_speed_10m,wind_speed_80m,wind_direction_10m,wind_direction_80m,wind_gusts_10m,temperature_80m,cloud_cover_1000hPa,cloud_cover_975hPa,cloud_cover_950hPa,cloud_cover_925hPa,cloud_cover_900hPa,cloud_cover_850hPa,cloud_cover_800hPa,cloud_cover_700hPa,cloud_cover_600hPa,cloud_cover_500hPa,cloud_cover_400hPa,cloud_cover_300hPa,cloud_cover_200hPa,cloud_cover_250hPa,cloud_cover_150hPa,cloud_cover_100hPa,cloud_cover_70hPa,cloud_cover_50hPa,cloud_cover_30hPa,wind_speed_1000hPa,wind_speed_975hPa,wind_speed_950hPa,wind_speed_925hPa,wind_speed_900hPa,wind_speed_850hPa,wind_speed_800hPa,wind_speed_700hPa,wind_speed_600hPa,wind_direction_600hPa,wind_direction_700hPa,wind_direction_800hPa,wind_direction_850hPa,wind_direction_900hPa,wind_direction_925hPa,wind_direction_950hPa,wind_direction_975hPa,wind_direction_1000hPa,geopotential_height_1000hPa,geopotential_height_975hPa,geopotential_height_950hPa,geopotential_height_925hPa,geopotential_height_900hPa,geopotential_height_850hPa,geopotential_height_800hPa,geopotential_height_700hPa,geopotential_height_600hPa,geopotential_height_500hPa,geopotential_height_400hPa,geopotential_height_300hPa,geopotential_height_250hPa,geopotential_height_200hPa,geopotential_height_150hPa,geopotential_height_100hPa,geopotential_height_70hPa,geopotential_height_50hPa,geopotential_height_30hPa&models=icon_seamless&minutely_15=precipitation,rain,snowfall,weather_code,wind_speed_10m,wind_speed_80m,wind_direction_10m,wind_direction_80m,wind_gusts_10m,visibility,cape,lightning_potential&timezone=auto&wind_speed_unit=kn&forecast_minutely_15=96"
+	apiURL        = fmt.Sprintf("https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&hourly=precipitation_probability,pressure_msl,cloud_cover_low,cloud_cover,cloud_cover_mid,cloud_cover_high,wind_speed_120m,wind_speed_180m,wind_direction_120m,wind_direction_180m,temperature_180m,temperature_120m,temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,rain,showers,snowfall,snow_depth,weather_code,surface_pressure,visibility,wind_speed_10m,wind_speed_80m,wind_direction_10m,wind_direction_80m,wind_gusts_10m,temperature_80m,cloud_cover_1000hPa,cloud_cover_975hPa,cloud_cover_950hPa,cloud_cover_925hPa,cloud_cover_900hPa,cloud_cover_850hPa,cloud_cover_800hPa,cloud_cover_700hPa,cloud_cover_600hPa,cloud_cover_500hPa,cloud_cover_400hPa,cloud_cover_300hPa,cloud_cover_200hPa,cloud_cover_250hPa,cloud_cover_150hPa,cloud_cover_100hPa,cloud_cover_70hPa,cloud_cover_50hPa,cloud_cover_30hPa,wind_speed_1000hPa,wind_speed_975hPa,wind_speed_950hPa,wind_speed_925hPa,wind_speed_900hPa,wind_speed_850hPa,wind_speed_800hPa,wind_speed_700hPa,wind_speed_600hPa,wind_direction_600hPa,wind_direction_700hPa,wind_direction_800hPa,wind_direction_850hPa,wind_direction_900hPa,wind_direction_925hPa,wind_direction_950hPa,wind_direction_975hPa,wind_direction_1000hPa,geopotential_height_1000hPa,geopotential_height_975hPa,geopotential_height_950hPa,geopotential_height_925hPa,geopotential_height_900hPa,geopotential_height_850hPa,geopotential_height_800hPa,geopotential_height_700hPa,geopotential_height_600hPa,geopotential_height_500hPa,geopotential_height_400hPa,geopotential_height_300hPa,geopotential_height_250hPa,geopotential_height_200hPa,geopotential_height_150hPa,geopotential_height_100hPa,geopotential_height_70hPa,geopotential_height_50hPa,geopotential_height_30hPa&models=icon_seamless&minutely_15=precipitation,rain,snowfall,weather_code,wind_speed_10m,wind_speed_80m,wind_direction_10m,wind_direction_80m,wind_gusts_10m,visibility,cape,lightning_potential&timezone=auto&wind_speed_unit=kn&forecast_minutely_15=96", EDDG.Latitude, EDDG.Longitude)
 )
 
 // GetWeatherData returns cached data if available and fresh, otherwise fetches new data
@@ -175,14 +185,16 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 	// Process temperature and cloud data
 	for i, timeStr := range apiResponse.Hourly.Time {
 		// Add temperature data
+		tempPoint := TemperaturePoint{}
 		if i < len(apiResponse.Hourly.Temperature2m) && i < len(apiResponse.Hourly.DewPoint2m) && i < len(apiResponse.Hourly.Precipitation) && i < len(apiResponse.Hourly.PrecipitationProbability) {
-			processed.TemperatureData = append(processed.TemperatureData, TemperaturePoint{
+			tempPoint = TemperaturePoint{
 				Time:                     timeStr,
 				Temperature:              apiResponse.Hourly.Temperature2m[i],
 				DewPoint:                 apiResponse.Hourly.DewPoint2m[i],
 				Precipitation:            apiResponse.Hourly.Precipitation[i],
 				PrecipitationProbability: apiResponse.Hourly.PrecipitationProbability[i],
-			})
+			}
+			processed.TemperatureData = append(processed.TemperatureData, tempPoint)
 		}
 
 		// Add cloud data - process all hPa levels
@@ -196,12 +208,13 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 			visibility = visibility / 1000
 		}
 
+		cloudBase := getCloudBase(cloudLayers)
 		// Always include a CloudPoint with visibility data, even if there are no cloud layers
 		processed.CloudData = append(processed.CloudData, CloudPoint{
 			Time:        timeStr,
 			CloudLayers: cloudLayers,
 			Visibility:  visibility,
-			Base:        getCloudBase(cloudLayers),
+			Base:        cloudBase,
 		})
 
 		// Get 10m wind speed and gusts for line chart
@@ -223,6 +236,14 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 				WindLayers:   windLayers,
 			})
 		}
+
+		// Calculate VFR probability
+		vfrProbability := calculateVFRProbability(cloudBase, windSpeed10m, visibility, tempPoint, timeStr)
+		processed.VfrData = append(processed.VfrData, VfrPoint{
+			Time:        timeStr,
+			Probability: vfrProbability,
+		})
+
 	}
 
 	return processed
@@ -268,25 +289,15 @@ func processCloudLayers(apiResponse *WeatherAPIResponse, timeIndex int) []CloudL
 
 			// Only include layers with some cloud coverage (avoid completely transparent symbols)
 			if coverage > 0 {
-				// Always use cloud symbol (transparency based on coverage in frontend)
-				symbol := getCloudSymbol(coverage)
-
 				layers = append(layers, CloudLayer{
 					HeightFeet: heightFeet,
 					Coverage:   coverage,
-					Symbol:     symbol,
 				})
 			}
 		}
 	}
 
 	return layers
-}
-
-// getCloudSymbol returns cloud symbol (always ☁ - transparency handled in frontend based on coverage)
-func getCloudSymbol(coverage int) string {
-	// Always return cloud symbol, transparency will be based on coverage percentage in frontend
-	return "☁"
 }
 
 // processWindLayers extracts wind data for hPa levels and converts to layers with heights
@@ -372,4 +383,205 @@ func getCloudBase(cloudLayers []CloudLayer) *int {
 	}
 	// No cloud base found
 	return nil
+}
+
+// calculateVFRProbability calculates the VFR probability based on weather conditions
+// Returns a percentage value (0-100)
+func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility float64, tempPoint TemperaturePoint, timeStr string) int {
+
+	timeStr += ":00Z"
+	t, err := time.Parse(time.RFC3339, timeStr)
+	if err != nil {
+		fmt.Printf("failed to parse time: %w", err)
+		return 0
+	}
+
+	// Start with 100% VFR probability
+	probability := 100
+
+	// check daylight
+	dayLight, err := getDayLight(EDDG.Latitude, EDDG.Longitude, t)
+	if err != nil {
+		fmt.Printf("failed to get daylight: %w", err)
+		return 0
+	}
+
+	// outside civil twilight no go
+	if t.Before(dayLight.Parsed.CivilTwilightBegin) || t.After(dayLight.Parsed.CivilTwilightEnd) {
+		return 0
+	}
+	// before sunrise and after sunset reduced...
+	if t.Before(dayLight.Parsed.Sunrise) || t.After(dayLight.Parsed.Sunset) {
+		probability -= 30
+	}
+
+	// Cloud base rules
+	if cloudBase != nil {
+		// cloud base is flight level!
+		if *cloudBase < 10 {
+			return 0
+		} else if *cloudBase < 15 {
+			probability -= 30
+		} else if *cloudBase < 20 {
+			probability -= 30
+		} else if *cloudBase < 30 {
+			probability -= 15
+		}
+	}
+
+	// Wind rules
+	// TODO calculate crosswind
+	if windSpeed > 20 {
+		probability -= int(4 * windSpeed)
+	} else if windSpeed > 15 {
+		probability -= int(3 * windSpeed)
+	} else if windSpeed > 10 {
+		probability -= int(2 * windSpeed)
+	}
+
+	// Visibility rules
+	if visibility < 5 {
+		// When visibility below 5km, VFR is 0%
+		return 0
+	} else if visibility < 10 {
+		// When visibility below 10km, subtract 50%
+		probability -= 60
+	} else if visibility < 20 {
+		// When visibility below 20km, subtract 25%
+		probability -= 30
+	}
+
+	// Precipitation rules
+	if tempPoint.Precipitation > 8 && tempPoint.PrecipitationProbability >= 20 {
+		probability -= 30
+	} else if tempPoint.Precipitation > 4 && tempPoint.PrecipitationProbability >= 40 {
+		probability -= 30
+	} else if tempPoint.Precipitation > 2 && tempPoint.PrecipitationProbability >= 60 {
+		probability -= 30
+	} else if tempPoint.Precipitation > 1 && tempPoint.PrecipitationProbability >= 80 {
+		probability -= 30
+	} else if tempPoint.Precipitation > 0.5 && tempPoint.PrecipitationProbability >= 80 {
+		probability -= 10
+	} else if tempPoint.Precipitation > 0 {
+		probability -= 10
+	}
+
+	// Ensure probability is within 0-100 range
+	if probability < 0 {
+		probability = 0
+	} else if probability > 100 {
+		probability = 100
+	}
+
+	return probability
+}
+
+type SunriseSunsetResponse struct {
+	Results struct {
+		Sunrise                    string `json:"sunrise"`
+		Sunset                     string `json:"sunset"`
+		SolarNoon                  string `json:"solar_noon"`
+		DayLength                  int64  `json:"day_length"`
+		CivilTwilight_Begin        string `json:"civil_twilight_begin"`
+		CivilTwilight_End          string `json:"civil_twilight_end"`
+		NauticalTwilight_Begin     string `json:"nautical_twilight_begin"`
+		NauticalTwilight_End       string `json:"nautical_twilight_end"`
+		AstronomicalTwilight_Begin string `json:"astronomical_twilight_begin"`
+		AstronomicalTwilight_End   string `json:"astronomical_twilight_end"`
+	} `json:"results"`
+	Parsed struct {
+		CivilTwilightBegin time.Time
+		CivilTwilightEnd   time.Time
+		Sunrise            time.Time
+		Sunset             time.Time
+	}
+	Status string `json:"status"`
+}
+
+type SunriseCache struct {
+	data  map[string]*SunriseSunsetResponse
+	mutex sync.RWMutex
+}
+
+var (
+	sunriseCache = &SunriseCache{
+		data: make(map[string]*SunriseSunsetResponse),
+	}
+)
+
+func getDayLight(latitude, longitude string, t time.Time) (*SunriseSunsetResponse, error) {
+
+	// Format date as YYYY-MM-DD
+	dateStr := t.Format("2006-01-02")
+
+	// Generate cache key
+	cacheKey := fmt.Sprintf("%s_%s_%s", latitude, longitude, dateStr)
+
+	// Check cache
+	sunriseCache.mutex.RLock()
+	if data, ok := sunriseCache.data[cacheKey]; ok {
+		sunriseCache.mutex.RUnlock()
+		return data, nil
+	}
+	sunriseCache.mutex.RUnlock()
+
+	url := fmt.Sprintf("https://api.sunrise-sunset.org/json?lat=%s&lng=%s&date=%s&formatted=0",
+		latitude, longitude, dateStr)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch sunrise/sunset data: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API returned status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var result SunriseSunsetResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse API response: %w", err)
+	}
+
+	// Parse the result
+
+	if result.Results.Sunrise != "" {
+		result.Parsed.Sunrise, err = time.Parse(time.RFC3339, result.Results.Sunrise)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse sunrise time: %w", err)
+		}
+	}
+
+	if result.Results.Sunset != "" {
+		result.Parsed.Sunset, err = time.Parse(time.RFC3339, result.Results.Sunset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse sunset time: %w", err)
+		}
+	}
+
+	if result.Results.CivilTwilight_Begin != "" {
+		result.Parsed.CivilTwilightBegin, err = time.Parse(time.RFC3339, result.Results.CivilTwilight_Begin)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse civil twilight begin time: %w", err)
+		}
+	}
+
+	if result.Results.CivilTwilight_End != "" {
+		result.Parsed.CivilTwilightEnd, err = time.Parse(time.RFC3339, result.Results.CivilTwilight_End)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse civil twilight end time: %w", err)
+		}
+	}
+
+	// Cache the result
+	sunriseCache.mutex.Lock()
+	sunriseCache.data[cacheKey] = &result
+	sunriseCache.mutex.Unlock()
+
+	return &result, nil
 }

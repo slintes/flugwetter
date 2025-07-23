@@ -18,28 +18,66 @@ function initializeCharts() {
     // VFR Chart
     const vfrCtx = document.getElementById('vfrChart').getContext('2d');
     
-    // Custom plugin to draw cloud base text with color coding
+    // Custom plugin to draw vfr text with color coding
     Chart.register({
         id: 'vfrText',
         afterDatasetsDraw: function(chart) {
             if (chart.canvas.id === 'vfrChart') {
                 const ctx = chart.ctx;
                 const chartArea = chart.chartArea;
-                
+
                 // Save the current context state
                 ctx.save();
-                
+
                 // Clip to chart area to prevent drawing outside
                 ctx.beginPath();
                 ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
                 ctx.clip();
+
+                chart.data.datasets.forEach((dataset, datasetIndex) => {
+                    if (dataset.label === 'VFR Probability') {
+                        dataset.data.forEach((point, index) => {
+                            if (point && point.probability !== undefined) {
+
+                                const xPos = chart.scales.x.getPixelForValue(point.x);
+                                const yPos = chartArea.top + (chartArea.bottom - chartArea.top) * 0.65;
+
+                                // Skip if outside visible area
+                                if (xPos < chartArea.left || xPos > chartArea.right) {
+                                    return;
+                                }
+
+                                const probability = point.probability;
+
+                                // Set text color based on probability ranges
+                                if (probability > 90) {
+                                    ctx.fillStyle = 'darkgreen'; // Dark green for over 90%
+                                } else if (probability > 70) {
+                                    ctx.fillStyle = 'green'; // Green for over 80%
+                                } else if (probability > 50) {
+                                    ctx.fillStyle = 'orange'; // Orange for over 70%
+                                } else {
+                                    ctx.fillStyle = 'red'; // Red for below 50%
+                                }
+
+                                // Set text properties
+                                ctx.font = '20px Narrow';
+                                ctx.textAlign = 'center';
+                                ctx.textBaseline = 'middle';
+
+                                // Draw the text
+                                ctx.fillText(`${probability}`, xPos, yPos);
+                            }
+                        })
+                    }
+                })
 
                 // Restore the context state
                 ctx.restore();
             }
         }
     });
-    
+
     vfrChart = new Chart(vfrCtx, {
         type: 'line',
         data: {
@@ -451,7 +489,6 @@ function initializeCharts() {
                 if (dataset.label === 'Cloud Base') {
                     dataset.data.forEach((point, index) => {
                         if (point && point.y !== undefined) {
-                            //const meta = chart.getDatasetMeta(datasetIndex);
                             const xPos = chart.scales.x.getPixelForValue(point.x);
                             const yPos = chartArea.top + (chartArea.bottom - chartArea.top) * 0.65;
 
@@ -1138,6 +1175,22 @@ function updateCharts(data) {
     windChart.data.datasets[1].data = windSpeed10mData;
     windChart.data.datasets[2].data = windGusts10mData;
     windChart.update();
+
+    const vfrData = [];
+    if (data.vfr_data) {
+        data.vfr_data.forEach(timePoint => {
+            // Convert UTC time string to local timezone Date object
+            const timeValue = new Date(timePoint.time + 'Z').getTime(); // Add 'Z' to indicate UTC
+
+            vfrData.push({
+                x: timeValue,
+                y: timePoint.probability / 100, // Convert to 0-1 range for chart
+                probability: timePoint.probability // Keep original percentage for display
+            })
+        })
+    }
+    vfrChart.data.datasets[0].data = vfrData;
+    vfrChart.update();
 }
 
 // Function to refresh data
