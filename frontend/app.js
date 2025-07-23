@@ -890,22 +890,29 @@ function refreshData() {
 setInterval(refreshData, 900000);
 
 // Function to reset zoom on all charts
-function resetZoom() {
+function resetZoom(hours) {
     if (temperatureChart) {
-        resetChartZoom(temperatureChart);
+        resetChartZoom(temperatureChart, hours);
     }
     if (cloudChart) {
-        resetChartZoom(cloudChart);
+        resetChartZoom(cloudChart, hours);
     }
     if (windChart) {
-        resetChartZoom(windChart);
+        resetChartZoom(windChart, hours);
     }
 }
 
-function resetChartZoom(chart) {
+function resetChartZoom(chart, hours) {
     const xAxis = chart.scales.x;
-    xAxis.options.min = undefined;
-    xAxis.options.max = undefined;
+    xAxis.options.min = new Date();
+    min = undefined;
+    max = undefined;
+    if ( hours !== undefined ) {
+        min = new Date(Date.now() - 3 * 60 * 60 * 1000) // start 3 hours ago
+        max = new Date(Date.now() + hours * 60 * 60 * 1000);
+    }
+    xAxis.options.min = min;
+    xAxis.options.max = max;
     chart.update();
 }
 

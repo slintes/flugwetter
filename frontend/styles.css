@@ -47,7 +47,8 @@ main {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr 1fr 1fr;
     gap: 30px;
-    margin-bottom: 20px;
+    margin-top: 10px;
+    margin-bottom: 10px;
 }
 
 .chart-container {
@@ -101,7 +102,8 @@ canvas {
 .chart-instructions {
     text-align: center;
     margin-top: 20px;
-    padding: 15px;
+    margin-bottom: 20px;
+    padding: 5px;
     background: rgba(255,255,255,0.9);
     border-radius: 10px;
     font-size: 0.9rem;

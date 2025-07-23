@@ -16,6 +16,15 @@
         </header>
 
         <main>
+            <div class="chart-instructions">
+                <strong>Chart Interaction:</strong> Use mouse wheel to zoom in/out • Click and drag to pan horizontally |
+                <button onclick="resetZoom(6)" style="padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">6h</button>
+                <button onclick="resetZoom(12)" style="padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">12h</button>
+                <button onclick="resetZoom(24)" style="padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">24h</button>
+                <button onclick="resetZoom(48)" style="padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">48h</button>
+                <button onclick="resetZoom(undefined)" style="padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">All Data</button>
+            </div>
+
             <div class="charts-grid">
                 <!-- Top Row -->
                 <div class="chart-container">
@@ -43,11 +52,6 @@
                 <button onclick="loadWeatherData()">Retry</button>
             </div>
 
-            <div class="chart-instructions">
-                <strong>Chart Interaction:</strong> Use mouse wheel to zoom in/out • Click and drag to pan horizontally
-                <br>
-                <button onclick="resetZoom()" style="margin-top: 10px; padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">Show All Data</button>
-            </div>
         </main>
     </div>
 
