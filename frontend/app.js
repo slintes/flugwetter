@@ -1187,10 +1187,9 @@ function addManualPanZoom(chart) {
     
     // Zoom with wheel only when Ctrl key is pressed
     canvas.addEventListener('wheel', function(e) {
-        e.preventDefault();
-        
-        // Only zoom if Ctrl key is pressed
+        // Only prevent default and zoom if Ctrl key is pressed
         if (e.ctrlKey) {
+            e.preventDefault();
             const xAxis = chart.scales.x;
             const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9;
             
