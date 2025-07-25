@@ -68,8 +68,43 @@ type VfrPoint struct {
 	Probability int    `json:"probability"`
 }
 
+// responseWriter is a custom ResponseWriter that captures the status code
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+// WriteHeader captures the status code and calls the underlying ResponseWriter's WriteHeader
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+// loggingMiddleware logs information about each incoming request and its response status
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Log the request
+		log.Printf("Request: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+
+		// Create a custom response writer to capture the status code
+		rw := &responseWriter{
+			ResponseWriter: w,
+			statusCode:     http.StatusOK, // Default to 200 OK
+		}
+
+		// Call the next handler with our custom response writer
+		next.ServeHTTP(rw, r)
+
+		// Log the response status
+		log.Printf("Response: %d for %s %s", rw.statusCode, r.Method, r.URL.Path)
+	})
+}
+
 func main() {
 	r := mux.NewRouter()
+
+	// Add logging middleware to log all requests
+	r.Use(loggingMiddleware)
 
 	// Serve static files
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("../frontend/"))))

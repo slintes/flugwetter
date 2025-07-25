@@ -169,7 +169,7 @@ func fetchAndCacheWeatherData() (*ProcessedWeatherData, error) {
 	cache.data = processedData
 	cache.timestamp = time.Now()
 
-	fmt.Printf("Successfully cached weather data with %d temperature points\n", len(processedData.TemperatureData))
+	fmt.Printf("Successfully cached weather data with %d data points\n", len(processedData.TemperatureData))
 
 	return processedData, nil
 }
