@@ -32,7 +32,8 @@ function initializeCharts() {
             grid: {
                 drawOnChartArea: drawOnChartArea,
                 z: -1,
-                color: 'rgba(0,0,0,0.3)'
+                color: 'rgba(0,0,0,0.3)',
+                offset: false
             },
             title: {
                 display: false
@@ -114,7 +115,7 @@ function initializeCharts() {
                                 }
 
                                 // Set text properties
-                                ctx.font = '20px Narrow';
+                                ctx.font = '24px Narrow';
                                 ctx.textAlign = 'center';
                                 ctx.textBaseline = 'middle';
 
@@ -205,33 +206,20 @@ function initializeCharts() {
             }, {
                 label: 'Precipitation (mm)',
                 data: [],
-                borderColor: '#0984e3',
-                backgroundColor: 'rgba(9, 132, 227, 0.3)',
-                borderWidth: 2,
-                fill: true,
-                tension: 0.4,
-                yAxisID: 'y1',
-                segment: {
-                    borderColor: function(ctx) {
-                        const p0 = ctx.p0.raw;
-                        const p1 = ctx.p1.raw;
-                        if (p0 && p0.precipitationProbability !== undefined) {
-                            const probability = p0.precipitationProbability / 100;
-                            const alpha = Math.max(0.2, probability);
-                            return `rgba(9, 132, 227, ${alpha})`;
-                        }
-                        return 'rgba(9, 132, 227, 0.5)';
-                    },
-                    backgroundColor: function(ctx) {
-                        const p0 = ctx.p0.raw;
-                        if (p0 && p0.precipitationProbability !== undefined) {
-                            const probability = p0.precipitationProbability / 100;
-                            const alpha = Math.max(0.1, probability * 0.4);
-                            return `rgba(9, 132, 227, ${alpha})`;
-                        }
-                        return 'rgba(9, 132, 227, 0.2)';
+                type: 'bar',
+                backgroundColor: function(ctx) {
+                    if (ctx.raw && ctx.raw.precipitationProbability !== undefined) {
+                        const probability = ctx.raw.precipitationProbability / 100;
+                        const alpha = Math.max(0.2, probability);
+                        return `rgba(9, 132, 227, ${alpha})`;
                     }
-                }
+                    return 'rgba(9, 132, 227, 0.5)';
+                },
+                borderColor: '#0984e3',
+                borderWidth: 1,
+                yAxisID: 'y1',
+                barPercentage: 0.8,
+                categoryPercentage: 1.0
             }, {
                 label: 'Precipitation Probability (%)',
                 data: [],
