@@ -70,39 +70,56 @@ function initializeCharts() {
         }
     }
 
-
-
-    // Custom plugin to draw vfr text with color coding
+    // Cache for weather icons
+    const weatherIconCache = {};
+    
+    // Function to preload weather icons
+    function preloadWeatherIcons() {
+        // Get all unique icon filenames from the weatherCodeToIcon mapping
+        const iconFilenames = new Set(Object.values(weatherCodeToIcon));
+        
+        // Preload each icon
+        iconFilenames.forEach(iconFilename => {
+            const img = new Image();
+            img.src = `static/icons/${iconFilename}`;
+            weatherIconCache[iconFilename] = img;
+        });
+    }
+    
+    // Preload icons when the page loads
+    preloadWeatherIcons();
+    
+    // Custom plugin to draw vfr text with color coding and weather icons
     Chart.register({
         id: 'vfrText',
         afterDatasetsDraw: function(chart) {
             if (chart.canvas.id === 'vfrChart') {
                 const ctx = chart.ctx;
                 const chartArea = chart.chartArea;
-
+                
                 // Save the current context state
                 ctx.save();
-
+                
                 // Clip to chart area to prevent drawing outside
                 ctx.beginPath();
                 ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
                 ctx.clip();
-
+                
                 chart.data.datasets.forEach((dataset, datasetIndex) => {
                     if (dataset.label === 'VFR Probability') {
                         dataset.data.forEach((point, index) => {
                             if (point && point.probability !== undefined) {
-
+                                
                                 const xPos = chart.scales.x.getPixelForValue(point.x);
                                 const yPos = chartArea.top + (chartArea.bottom - chartArea.top) * 0.65;
-
+                                
                                 // Skip if outside visible area
                                 if (xPos < chartArea.left || xPos > chartArea.right) {
                                     return;
                                 }
-
+                                
                                 const probability = point.probability;
-
+                                
                                 // Set text color based on probability ranges
                                 if (probability > 90) {
                                     ctx.fillStyle = 'darkgreen'; // Dark green for over 90%
@@ -113,19 +130,45 @@ function initializeCharts() {
                                 } else {
                                     ctx.fillStyle = 'red'; // Red for below 50%
                                 }
-
+                                
                                 // Set text properties
                                 ctx.font = '24px Narrow';
                                 ctx.textAlign = 'center';
                                 ctx.textBaseline = 'middle';
-
+                                
                                 // Draw the text
                                 ctx.fillText(`${probability}`, xPos, yPos);
+                                
+                                // Draw weather icon if available
+                                if (point.weatherCode !== undefined) {
+                                    const weatherCode = point.weatherCode;
+                                    const iconFilename = weatherCodeToIcon[weatherCode] || "notavailable.svg";
+                                    const iconSize = 50;
+                                    const iconY = yPos - 40; // Position above the text
+
+                                    // Use cached icon if available, otherwise load it
+                                    if (weatherIconCache[iconFilename] && weatherIconCache[iconFilename].complete) {
+                                        // Draw from cache
+                                        ctx.drawImage(weatherIconCache[iconFilename], xPos - iconSize/2, iconY - iconSize/2, iconSize, iconSize);
+                                    } else {
+                                        // Create and cache a new image if not in cache
+                                        if (!weatherIconCache[iconFilename]) {
+                                            const img = new Image();
+                                            img.src = `static/icons/${iconFilename}`;
+                                            weatherIconCache[iconFilename] = img;
+
+                                            // Draw the icon when it's loaded
+                                            img.onload = function() {
+                                                ctx.drawImage(img, xPos - iconSize/2, iconY - iconSize/2, iconSize, iconSize);
+                                            };
+                                        }
+                                    }
+                                }
                             }
                         })
                     }
                 })
-
+                
                 // Restore the context state
                 ctx.restore();
             }
@@ -1047,7 +1090,8 @@ function updateCharts(data) {
             vfrData.push({
                 x: timeValue,
                 y: timePoint.probability / 100, // Convert to 0-1 range for chart
-                probability: timePoint.probability // Keep original percentage for display
+                probability: timePoint.probability, // Keep original percentage for display
+                weatherCode: timePoint.weather_code // Include weather code for icon display
             })
         })
     }

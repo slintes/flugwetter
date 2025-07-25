@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -39,6 +40,7 @@ type WeatherAPIResponse struct {
 		Pressure                 []float64  `json:"pressure_msl"`
 		RelativeHumidity2m       []int      `json:"relative_humidity_2m"`
 		Visibility               []*float64 `json:"visibility,omitempty"`
+		WeatherCode              []int      `json:"weather_code,omitempty"`
 
 		// hPa-based wind data
 		WindSpeed1000hPa []float64 `json:"wind_speed_1000hPa"`
@@ -240,9 +242,33 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 
 		// Calculate VFR probability
 		vfrProbability := calculateVFRProbability(cloudBase, windSpeed10m, visibility, tempPoint, timeStr)
+
+		// Get weather code if available
+		weatherCode := -1 // Default to clear sky
+		processWeatherCode := ""
+		if i < len(apiResponse.Hourly.WeatherCode) {
+			weatherCode = apiResponse.Hourly.WeatherCode[i]
+			processWeatherCode = strconv.Itoa(weatherCode)
+
+			// is daylight?
+			t, err := time.Parse(time.RFC3339, timeStr+":00Z")
+			if err != nil {
+				fmt.Printf("failed to parse time: %w", err)
+			}
+			fmt.Printf("time: %s\n", t)
+			dayLight, err := getDayLight(EDDG.Latitude, EDDG.Longitude, t)
+			if err != nil {
+				fmt.Printf("failed to get daylight: %w", err)
+			}
+			isDaylight := t.After(dayLight.Parsed.Sunrise) && t.Before(dayLight.Parsed.Sunset)
+			if !isDaylight {
+				processWeatherCode = fmt.Sprintf("%s%s", processWeatherCode, "-night")
+			}
+		}
 		processed.VfrData = append(processed.VfrData, VfrPoint{
 			Time:        timeStr,
 			Probability: vfrProbability,
+			WeatherCode: processWeatherCode,
 		})
 
 	}

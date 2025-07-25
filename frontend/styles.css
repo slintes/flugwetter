@@ -82,12 +82,12 @@ canvas {
 }
 
 .vfr-container {
-    min-height: 120px;
+    min-height: 150px;
 }
 
 .vfr-container canvas {
-    min-height: 120px;
-    max-height: 120px;
+    min-height: 150px;
+    max-height: 150px;
     padding-left: 50px;
     padding-right: 80px;
 }

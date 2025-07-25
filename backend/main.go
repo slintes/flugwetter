@@ -66,6 +66,7 @@ type WindLayer struct {
 type VfrPoint struct {
 	Time        string `json:"time"`
 	Probability int    `json:"probability"`
+	WeatherCode string `json:"weather_code"`
 }
 
 // responseWriter is a custom ResponseWriter that captures the status code
@@ -96,7 +97,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(rw, r)
 
 		// Log the response status
-		log.Printf("Response: %d for %s %s", rw.statusCode, r.Method, r.URL.Path)
+		//log.Printf("Response: %d for %s %s", rw.statusCode, r.Method, r.URL.Path)
 	})
 }
 
