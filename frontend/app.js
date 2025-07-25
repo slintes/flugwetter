@@ -451,7 +451,8 @@ function initializeCharts() {
                     dataset.data.forEach((point, index) => {
                         if (point && point.y !== undefined) {
                             const xPos = chart.scales.x.getPixelForValue(point.x);
-                            const yPos = chartArea.top + (chartArea.bottom - chartArea.top) * 0.8;
+                            // const yPos = chartArea.top + (chartArea.bottom - chartArea.top) * 0.75;
+                            const yPos = chartArea.bottom - 8;
 
                             // Skip if outside visible area
                             if (xPos < chartArea.left || xPos > chartArea.right) {
@@ -459,7 +460,7 @@ function initializeCharts() {
                             }
 
                             // Set text style
-                            ctx.font = '16px Narrow';
+                            ctx.font = '20px Narrow';
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'middle';
 
@@ -470,13 +471,13 @@ function initializeCharts() {
                             } else if (point.y < 15) {
                                 textColor = 'rgb(255,66,0)'; // Orange for 1000-2000ft
                             } else if (point.y < 20) {
-                                textColor = 'rgb(255,196,0)'; // Orange for 1000-2000ft
+                                textColor = 'rgb(216,137,18)'; // Orange for 1000-2000ft
                             } else if (point.y < 25) {
-                                textColor = 'rgb(174,225,18)'; // Light green for 2000-3000ft
+                                textColor = 'rgb(144,182,25)'; // Light green for 2000-3000ft
                             } else if (point.y < 30) {
-                                textColor = 'rgba(28,221,28,0.7)'; // Light green for 2000-3000ft
+                                textColor = 'rgba(105,221,28,0.9)'; // Light green for 2000-3000ft
                             } else {
-                                textColor = 'rgba(0, 150, 0, 0.4)'; // Dark green for > 3000ft
+                                textColor = 'rgba(0, 150, 0, 0.8)'; // Dark green for > 3000ft
                             }
 
                             ctx.fillStyle = textColor;
@@ -558,7 +559,7 @@ function initializeCharts() {
                 y: {
                     type: 'logarithmic',
                     position: 'left',
-                    min: 300, // Start from 100ft for low-level clouds
+                    min: 200, // low-level clouds
                     max: 12000, // Max altitude
                     grid: {
                         color: 'rgba(0,0,0,0.1)'
