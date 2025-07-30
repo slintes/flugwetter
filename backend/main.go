@@ -104,6 +104,9 @@ func loggingMiddleware(next http.Handler) http.Handler {
 func main() {
 	r := mux.NewRouter()
 
+	// pre cache weather data
+	_, _ = GetWeatherData()
+
 	// Add logging middleware to log all requests
 	r.Use(loggingMiddleware)
 
