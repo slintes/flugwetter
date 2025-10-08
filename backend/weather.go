@@ -255,7 +255,7 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 			if err != nil {
 				fmt.Printf("failed to parse time: %w", err)
 			}
-			fmt.Printf("time: %s\n", t)
+			debug("time: %s", t)
 			dayLight, err := getDayLight(EDDG.Latitude, EDDG.Longitude, t)
 			if err != nil {
 				fmt.Printf("failed to get daylight: %w", err)
@@ -416,11 +416,15 @@ func getCloudBase(cloudLayers []CloudLayer) *int {
 // Returns a percentage value (0-100)
 func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility *float64, tempPoint TemperaturePoint, timeStr string) int {
 
+	debugProb := func(reason string, value string) {
+		debug(fmt.Sprintf("VFR probability modified, reaon %s, value %s", reason, value))
+	}
+
 	timeStr += ":00Z"
 	t, err := time.Parse(time.RFC3339, timeStr)
 	if err != nil {
 		fmt.Printf("failed to parse time: %w", err)
-		return 0
+		return -1
 	}
 
 	// Start with 100% VFR probability
@@ -430,15 +434,19 @@ func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility *floa
 	dayLight, err := getDayLight(EDDG.Latitude, EDDG.Longitude, t)
 	if err != nil {
 		fmt.Printf("failed to get daylight: %w", err)
-		return 0
+		return -1
 	}
+
+	debug("calc vfr prob for %s", t.Format(time.RFC822))
 
 	// outside civil twilight no go
 	if t.Before(dayLight.Parsed.CivilTwilightBegin) || t.After(dayLight.Parsed.CivilTwilightEnd) {
+		debugProb("outside civil twilight", "0")
 		return 0
 	}
 	// before sunrise and after sunset reduced...
 	if t.Before(dayLight.Parsed.Sunrise) || t.After(dayLight.Parsed.Sunset) {
+		debugProb("outside sunlight", "-30")
 		probability -= 30
 	}
 
@@ -446,63 +454,97 @@ func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility *floa
 	if cloudBase != nil {
 		// cloud base is flight level!
 		if *cloudBase < 10 {
+			debugProb("cloudbase <1000ft", "0")
 			return 0
 		} else if *cloudBase < 15 {
+			debugProb("cloudbase <1500ft", "-50")
 			probability -= 50
 		} else if *cloudBase < 20 {
-			probability -= 40
-		} else if *cloudBase < 25 {
+			debugProb("cloudbase <2000ft", "-25")
 			probability -= 25
+		} else if *cloudBase < 25 {
+			debugProb("cloudbase <2500ft", "-10")
+			probability -= 10
 		} else if *cloudBase < 30 {
-			probability -= 15
+			debugProb("cloudbase <3000ft", "-5")
+			probability -= 5
 		}
 	}
 
 	// Wind rules
 	// TODO calculate crosswind
 	if windSpeed > 20 {
-		probability -= int(4 * windSpeed)
+		reduce := int(4 * windSpeed)
+		debugProb("windspeed > 20", fmt.Sprintf("-%d", reduce))
+		probability -= reduce
 	} else if windSpeed > 15 {
-		probability -= int(3 * windSpeed)
+		reduce := int(3 * windSpeed)
+		debugProb("windspeed > 15", fmt.Sprintf("-%d", reduce))
+		probability -= reduce
 	} else if windSpeed > 10 {
-		probability -= int(2 * windSpeed)
+		reduce := int(2 * windSpeed)
+		debugProb("windspeed > 10", fmt.Sprintf("-%d", reduce))
+		probability -= reduce
 	}
 
 	// Visibility rules
 	if visibility != nil {
 		if *visibility < 5 {
 			// When visibility below 5km, VFR is 0%
+			debugProb("visibility < 5km", "0")
 			return 0
 		} else if *visibility < 10 {
-			// When visibility below 10km, subtract 50%
-			probability -= 60
+			debugProb("visibility < 10km", "-50")
+			probability -= 50
 		} else if *visibility < 20 {
-			// When visibility below 20km, subtract 25%
-			probability -= 30
+			debugProb("visibility < 20km", "-20")
+			probability -= 20
+		} else if *visibility < 30 {
+			debugProb("visibility < 30km", "-10")
+			probability -= 10
 		}
 	} else {
 		// somehow mark that we don't have visibilty....
-		probability -= 11
+		debugProb("no visibility avail", "-1")
+		probability = -1
 	}
 
 	// Precipitation rules
-	if tempPoint.Precipitation > 8 && tempPoint.PrecipitationProbability >= 20 {
-		probability -= 30
-	} else if tempPoint.Precipitation > 4 && tempPoint.PrecipitationProbability >= 40 {
-		probability -= 30
-	} else if tempPoint.Precipitation > 2 && tempPoint.PrecipitationProbability >= 60 {
-		probability -= 30
-	} else if tempPoint.Precipitation > 1 && tempPoint.PrecipitationProbability >= 80 {
-		probability -= 30
-	} else if tempPoint.Precipitation > 0.5 && tempPoint.PrecipitationProbability >= 80 {
+	switch {
+	case tempPoint.Precipitation >= 8:
+		debugProb("precipitation >= 8", "-25")
+		probability -= 25
+	case tempPoint.Precipitation >= 4:
+		debugProb("precipitation >= 4", "-20")
+		probability -= 20
+	case tempPoint.Precipitation >= 2:
+		debugProb("precipitation >= 2", "-15")
+		probability -= 15
+	case tempPoint.Precipitation >= 1:
+		debugProb("precipitation >= 1", "-10")
 		probability -= 10
-	} else if tempPoint.Precipitation > 0 {
-		probability -= 10
+	case tempPoint.Precipitation > 0:
+		debugProb("precipitation > 0", "-5")
+		probability -= 5
 	}
 
-	// Ensure probability is within 0-100 range
-	if probability < 0 {
-		probability = 0
+	if tempPoint.Precipitation >= 2 {
+		switch {
+		case tempPoint.PrecipitationProbability >= 80:
+			debugProb("precipitation >= 2, prob >= 80", "-20")
+			probability -= 20
+		case tempPoint.PrecipitationProbability >= 60:
+			debugProb("precipitation >= 2, prob >= 60", "-15")
+			probability -= 15
+		case tempPoint.PrecipitationProbability >= 40:
+			debugProb("precipitation >= 2, prob >= 40", "-10")
+			probability -= 10
+		}
+	}
+
+	// Ensure probability is within -1 - 100 range
+	if probability < -1 {
+		probability = -1
 	} else if probability > 100 {
 		probability = 100
 	}

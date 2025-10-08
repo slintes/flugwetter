@@ -121,14 +121,14 @@ function initializeCharts() {
                                 const probability = point.probability;
                                 
                                 // Set text color based on probability ranges
-                                if (probability > 90) {
-                                    ctx.fillStyle = 'darkgreen'; // Dark green for over 90%
-                                } else if (probability > 70) {
-                                    ctx.fillStyle = 'green'; // Green for over 80%
-                                } else if (probability > 50) {
-                                    ctx.fillStyle = 'orange'; // Orange for over 70%
+                                if (probability >= 90) {
+                                    ctx.fillStyle = 'darkgreen';
+                                } else if (probability >= 60) {
+                                    ctx.fillStyle = 'green';
+                                } else if (probability >= 30) {
+                                    ctx.fillStyle = 'orange';
                                 } else {
-                                    ctx.fillStyle = 'red'; // Red for below 50%
+                                    ctx.fillStyle = 'red';
                                 }
                                 
                                 // Set text properties

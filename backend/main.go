@@ -9,6 +9,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
+const DEBUG = false
+
 // WeatherData represents the processed weather information
 type WeatherData struct {
 	Hourly struct {
@@ -97,7 +99,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(rw, r)
 
 		// Log the response status
-		//log.Printf("Response: %d for %s %s", rw.statusCode, r.Method, r.URL.Path)
+		debug("Response: %d for %s %s", rw.statusCode, r.Method, r.URL.Path)
 	})
 }
 
@@ -140,5 +142,12 @@ func getWeatherData(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error encoding weather data: %v", err)
 		http.Error(w, "Failed to encode weather data", http.StatusInternalServerError)
 		return
+	}
+}
+
+func debug(s string, v ...interface{}) {
+	if DEBUG {
+		fmt.Printf(s, v...)
+		fmt.Println()
 	}
 }
