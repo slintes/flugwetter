@@ -11,19 +11,7 @@ import (
 
 const DEBUG = false
 
-// WeatherData represents the processed weather information
-type WeatherData struct {
-	Hourly struct {
-		Time           []string  `json:"time"`
-		Temperature2m  []float64 `json:"temperature_2m"`
-		CloudCoverLow  []int     `json:"cloud_cover_low"`
-		CloudCover     []int     `json:"cloud_cover"`
-		CloudCoverMid  []int     `json:"cloud_cover_mid"`
-		CloudCoverHigh []int     `json:"cloud_cover_high"`
-	} `json:"hourly"`
-}
-
-// ProcessedWeatherData represents the data structure sent to frontend
+// ProcessedWeatherData represents the data structure sent to the frontend
 type ProcessedWeatherData struct {
 	TemperatureData []TemperaturePoint `json:"temperature_data"`
 	CloudData       []CloudPoint       `json:"cloud_data"`
