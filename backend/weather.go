@@ -488,7 +488,9 @@ func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility *floa
 	}
 
 	// Visibility rules
+	visibilityAvailable := false
 	if visibility != nil {
+		visibilityAvailable = true
 		if *visibility < 5 {
 			// When visibility below 5km, VFR is 0%
 			debugProb("visibility < 5km", "0")
@@ -504,9 +506,7 @@ func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility *floa
 			probability -= 10
 		}
 	} else {
-		// somehow mark that we don't have visibilty....
-		debugProb("no visibility avail", "-1")
-		probability = -1
+		debugProb("no visibility avail", "")
 	}
 
 	// Precipitation rules
@@ -543,10 +543,13 @@ func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility *floa
 	}
 
 	// Ensure probability is within -1 - 100 range
-	if probability < -1 {
-		probability = -1
+	if probability < 0 {
+		probability = 0
 	} else if probability > 100 {
 		probability = 100
+	}
+	if !visibilityAvailable {
+		probability = -1
 	}
 
 	return probability
