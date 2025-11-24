@@ -7,7 +7,7 @@ let vfrChart;
 document.addEventListener('DOMContentLoaded', function() {
     initializeCharts();
     loadWeatherData();
-    resetZoom(24)
+    resetZoom(72)
 
     // Set up manual pan/zoom after charts are created
     setTimeout(setupManualPanZoom, 1000);
@@ -1263,5 +1263,3 @@ function syncManualPan(targetChart, min, max) {
     xAxis.options.max = max;
     targetChart.update('none');
 }
-
- 
