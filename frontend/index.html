@@ -18,13 +18,13 @@
 
         <main>
             <div class="chart-instructions">
-                Use Ctrl + mouse wheel to zoom, drag to pan horizontal &nbsp; &nbsp; &nbsp;
-                <button onclick="resetZoom(6)" style="padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">6h</button>
-                <button onclick="resetZoom(12)" style="padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">12h</button>
-                <button onclick="resetZoom(24)" style="padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">24h</button>
-                <button onclick="resetZoom(48)" style="padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">48h</button>
-                <button onclick="resetZoom(72)" style="padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">72h</button>
-                <button onclick="resetZoom(undefined)" style="padding: 5px 15px; background: #74b9ff; color: white; border: none; border-radius: 20px; cursor: pointer;">All Data</button>
+                <span class="desktop-hint">Ctrl + scroll to zoom, drag to pan</span><span class="mobile-hint">Swipe to pan, pinch to zoom</span>
+                <button onclick="resetZoom(6)">6h</button>
+                <button onclick="resetZoom(12)">12h</button>
+                <button onclick="resetZoom(24)">24h</button>
+                <button onclick="resetZoom(48)">48h</button>
+                <button onclick="resetZoom(72)">72h</button>
+                <button onclick="resetZoom(undefined)">All</button>
             </div>
 
             <div class="charts-grid">

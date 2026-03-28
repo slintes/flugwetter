@@ -7,7 +7,8 @@ let vfrChart;
 document.addEventListener('DOMContentLoaded', function() {
     initializeCharts();
     loadWeatherData();
-    resetZoom(72)
+    const isMobile = window.matchMedia('(pointer: coarse)').matches;
+    resetZoom(isMobile ? 6 : 72)
 
     // Set up manual pan/zoom after charts are created
     setTimeout(setupManualPanZoom, 1000);
@@ -1263,6 +1264,63 @@ function addManualPanZoom(chart) {
         isDragging = false;
     });
     
+    // Touch support for mobile pan
+    let touchStartX = null;
+    let touchInitialMin = null;
+    let touchInitialMax = null;
+    let lastPinchDistance = null;
+
+    canvas.addEventListener('touchstart', function(e) {
+        if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX;
+            const xAxis = chart.scales.x;
+            touchInitialMin = xAxis.min;
+            touchInitialMax = xAxis.max;
+        } else if (e.touches.length === 2) {
+            lastPinchDistance = Math.abs(e.touches[0].clientX - e.touches[1].clientX);
+            const xAxis = chart.scales.x;
+            touchInitialMin = xAxis.min;
+            touchInitialMax = xAxis.max;
+        }
+    }, {passive: true});
+
+    canvas.addEventListener('touchmove', function(e) {
+        if (e.touches.length === 1 && touchStartX !== null) {
+            e.preventDefault();
+            const deltaX = e.touches[0].clientX - touchStartX;
+            const xAxis = chart.scales.x;
+            const chartArea = chart.chartArea;
+            const pixelRange = chartArea.right - chartArea.left;
+            const timeRange = touchInitialMax - touchInitialMin;
+            const timeShift = -(deltaX / pixelRange) * timeRange;
+
+            xAxis.options.min = touchInitialMin + timeShift;
+            xAxis.options.max = touchInitialMax + timeShift;
+            chart.update('none');
+            syncAllCharts(chart, xAxis.options.min, xAxis.options.max);
+        } else if (e.touches.length === 2 && lastPinchDistance !== null) {
+            e.preventDefault();
+            const currentDistance = Math.abs(e.touches[0].clientX - e.touches[1].clientX);
+            const zoomFactor = lastPinchDistance / currentDistance;
+            const xAxis = chart.scales.x;
+            const range = touchInitialMax - touchInitialMin;
+            const center = (touchInitialMax + touchInitialMin) / 2;
+            const newRange = range * zoomFactor;
+
+            xAxis.options.min = center - newRange / 2;
+            xAxis.options.max = center + newRange / 2;
+            chart.update('none');
+            syncAllCharts(chart, xAxis.options.min, xAxis.options.max);
+        }
+    }, {passive: false});
+
+    canvas.addEventListener('touchend', function(e) {
+        if (e.touches.length === 0) {
+            touchStartX = null;
+            lastPinchDistance = null;
+        }
+    }, {passive: true});
+
     // Zoom with wheel only when Ctrl key is pressed
     canvas.addEventListener('wheel', function(e) {
         // Only prevent default and zoom if Ctrl key is pressed
@@ -1300,6 +1358,15 @@ function addManualPanZoom(chart) {
             }
         }
     });
+}
+
+function syncAllCharts(sourceChart, min, max) {
+    const allCharts = [vfrChart, temperatureChart, cloudChart, windChart];
+    for (const c of allCharts) {
+        if (c && c !== sourceChart) {
+            syncManualPan(c, min, max);
+        }
+    }
 }
 
 function syncManualPan(targetChart, min, max) {
