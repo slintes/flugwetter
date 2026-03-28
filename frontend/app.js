@@ -44,15 +44,9 @@ function initializeCharts() {
                     // Show tick if it's at 0, 3, 6, 9, 12, 15, 18, 21 hours
                     if (date.getHours() % 3 === 0) {
                         if (date.getHours() === 0) {
-                            // For midnight, show date and time
-                            return date.toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric'
-                            }) + '\n' + date.toLocaleTimeString('en-US', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                hour12: false
-                            });
+                            // Midnight labels are drawn by the midnightDateLabels plugin
+                            // Return empty string to reserve tick space but skip default rendering
+                            return '';
                         } else {
                             // For other hours, show time only
                             return date.toLocaleTimeString('en-US', {
@@ -66,6 +60,7 @@ function initializeCharts() {
                 },
                 maxRotation: 45,
                 autoSkip: false,
+                padding: 8,
             },
         }
     }
@@ -89,6 +84,56 @@ function initializeCharts() {
     // Preload icons when the page loads
     preloadWeatherIcons();
     
+    // Custom plugin to render midnight date labels (day-of-week + date, larger + bold; time smaller)
+    Chart.register({
+        id: 'midnightDateLabels',
+        afterDraw(chart) {
+            const xAxis = chart.scales.x;
+            if (!xAxis) return;
+            const ctx = chart.ctx;
+            const ticks = xAxis.ticks;
+            if (!ticks) return;
+
+            const dateFontSize = 14;
+            const timeFontSize = 11;
+            const lineSpacing = 3;
+
+            ticks.forEach((tick) => {
+                const date = new Date(tick.value);
+                if (date.getHours() !== 0 || date.getMinutes() !== 0) return;
+
+                const x = xAxis.getPixelForValue(tick.value);
+                const yStart = xAxis.top + 6;
+
+                const dateLine = date.toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
+                });
+                const timeLine = date.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                });
+
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+
+                // Draw date line (larger, bold)
+                ctx.fillStyle = '#333';
+                ctx.font = `bold ${dateFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+                ctx.fillText(dateLine, x, yStart);
+
+                // Draw time line (smaller)
+                ctx.font = `${timeFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+                ctx.fillText(timeLine, x, yStart + dateFontSize + lineSpacing);
+
+                ctx.restore();
+            });
+        }
+    });
+
     // Custom plugin to draw vfr text with color coding and weather icons
     Chart.register({
         id: 'vfrText',
