@@ -189,13 +189,21 @@ function initializeCharts() {
                                 if (point.weatherCode !== undefined) {
                                     const weatherCode = point.weatherCode;
                                     const iconFilename = weatherCodeToIcon[weatherCode] || "notavailable.svg";
-                                    const iconSize = 50;
-                                    const iconY = yPos - 40; // Position above the text
+                                    const maxIconSize = 36;
+                                    const iconY = yPos - 36; // Position above the text
+
+                                    function drawIcon(img, x, y) {
+                                        const natW = img.naturalWidth || maxIconSize;
+                                        const natH = img.naturalHeight || maxIconSize;
+                                        const scale = Math.min(maxIconSize / natW, maxIconSize / natH);
+                                        const w = natW * scale;
+                                        const h = natH * scale;
+                                        ctx.drawImage(img, x - w/2, y - h/2, w, h);
+                                    }
 
                                     // Use cached icon if available, otherwise load it
                                     if (weatherIconCache[iconFilename] && weatherIconCache[iconFilename].complete) {
-                                        // Draw from cache
-                                        ctx.drawImage(weatherIconCache[iconFilename], xPos - iconSize/2, iconY - iconSize/2, iconSize, iconSize);
+                                        drawIcon(weatherIconCache[iconFilename], xPos, iconY);
                                     } else {
                                         // Create and cache a new image if not in cache
                                         if (!weatherIconCache[iconFilename]) {
@@ -203,9 +211,8 @@ function initializeCharts() {
                                             img.src = `static/icons/${iconFilename}`;
                                             weatherIconCache[iconFilename] = img;
 
-                                            // Draw the icon when it's loaded
                                             img.onload = function() {
-                                                ctx.drawImage(img, xPos - iconSize/2, iconY - iconSize/2, iconSize, iconSize);
+                                                drawIcon(img, xPos, iconY);
                                             };
                                         }
                                     }
