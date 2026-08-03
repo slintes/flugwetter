@@ -165,25 +165,40 @@ function initializeCharts() {
                                 }
                                 
                                 const probability = point.probability;
-                                
-                                // Set text color based on probability ranges
-                                if (probability >= 90) {
-                                    ctx.fillStyle = 'darkgreen';
-                                } else if (probability >= 60) {
-                                    ctx.fillStyle = 'green';
-                                } else if (probability >= 30) {
-                                    ctx.fillStyle = 'orange';
+
+                                // Three presentations, in order of precedence:
+                                //   < 0            no score at all -> grey dash
+                                //   visibility     unknown (model dropped it, typically
+                                //                  the forecast tail) -> grey "NN?", so an
+                                //                  estimate never reads as a hard number
+                                //   otherwise      the normal colour ladder
+                                let label;
+                                if (probability < 0) {
+                                    label = '–';
+                                    ctx.fillStyle = '#999';
+                                } else if (point.visibilityKnown === false) {
+                                    label = `${probability}?`;
+                                    ctx.fillStyle = '#888';
                                 } else {
-                                    ctx.fillStyle = 'red';
+                                    label = `${probability}`;
+                                    if (probability >= 90) {
+                                        ctx.fillStyle = 'darkgreen';
+                                    } else if (probability >= 60) {
+                                        ctx.fillStyle = 'green';
+                                    } else if (probability >= 30) {
+                                        ctx.fillStyle = 'orange';
+                                    } else {
+                                        ctx.fillStyle = 'red';
+                                    }
                                 }
-                                
+
                                 // Set text properties
                                 ctx.font = '24px Narrow';
                                 ctx.textAlign = 'center';
                                 ctx.textBaseline = 'middle';
-                                
+
                                 // Draw the text
-                                ctx.fillText(`${probability}`, xPos, yPos);
+                                ctx.fillText(label, xPos, yPos);
                                 
                                 // Draw weather icon if available
                                 if (point.weatherCode !== undefined) {
@@ -1184,7 +1199,8 @@ function updateCharts(data) {
                 x: timeValue,
                 y: timePoint.probability / 100, // Convert to 0-1 range for chart
                 probability: timePoint.probability, // Keep original percentage for display
-                weatherCode: timePoint.weather_code // Include weather code for icon display
+                weatherCode: timePoint.weather_code, // Include weather code for icon display
+                visibilityKnown: timePoint.visibility_known // false => score is an estimate
             })
         })
     }

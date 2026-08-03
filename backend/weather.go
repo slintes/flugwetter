@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -258,7 +259,7 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 		}
 
 		// Calculate VFR probability
-		vfrProbability := calculateVFRProbability(cloudBase, windSpeed10m, crosswind10m, crosswindGusts10m, visibility, tempPoint, timeStr)
+		vfrProbability, visibilityKnown := calculateVFRProbability(cloudBase, windSpeed10m, crosswind10m, crosswindGusts10m, visibility, tempPoint, timeStr)
 
 		// Get weather code if available
 		weatherCode := -1 // Default to clear sky
@@ -270,12 +271,12 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 			// is daylight?
 			t, err := time.Parse(time.RFC3339, timeStr+":00Z")
 			if err != nil {
-				fmt.Printf("failed to parse time: %w", err)
+				log.Printf("failed to parse time %q: %v", timeStr, err)
 			}
 			debug("time: %s", t)
-			dayLight, err := getDayLight(EDWN.Latitude, EDWN.Longitude, t)
+			dayLight, err := getDayLightFn(EDWN.Latitude, EDWN.Longitude, t)
 			if err != nil {
-				fmt.Printf("failed to get daylight: %w", err)
+				log.Printf("failed to get daylight for %s: %v", timeStr, err)
 			}
 			isDaylight := t.After(dayLight.Parsed.Sunrise) && t.Before(dayLight.Parsed.Sunset)
 			if !isDaylight {
@@ -283,9 +284,10 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 			}
 		}
 		processed.VfrData = append(processed.VfrData, VfrPoint{
-			Time:        timeStr,
-			Probability: vfrProbability,
-			WeatherCode: processWeatherCode,
+			Time:            timeStr,
+			Probability:     vfrProbability,
+			WeatherCode:     processWeatherCode,
+			VisibilityKnown: visibilityKnown,
 		})
 
 	}
@@ -441,29 +443,35 @@ func getCloudBase(cloudLayers []CloudLayer) *int {
 	return nil
 }
 
-// calculateVFRProbability calculates the VFR probability based on weather conditions
-// Returns a percentage value (0-100)
-func calculateVFRProbability(cloudBase *int, windSpeed, crosswind, crosswindGusts float64, visibility *float64, tempPoint TemperaturePoint, timeStr string) int {
+// calculateVFRProbability calculates the VFR probability based on weather conditions.
+// Returns a percentage value (0-100), or -1 when no score could be computed at all.
+//
+// visibilityKnown reports whether the model supplied a visibility for this hour.
+// Open-Meteo drops visibility beyond the ICON-EU horizon, which is the tail of every
+// forecast. Those hours are still scored on the factors that are available; the caller
+// is expected to present them as estimates rather than as hard numbers.
+func calculateVFRProbability(cloudBase *int, windSpeed, crosswind, crosswindGusts float64, visibility *float64, tempPoint TemperaturePoint, timeStr string) (probability int, visibilityKnown bool) {
 
 	debugProb := func(reason string, value string) {
-		debug(fmt.Sprintf("VFR probability modified, reason %s, value %s", reason, value))
+		debug("VFR probability modified, reason %s, value %s", reason, value)
 	}
 
 	timeStr += ":00Z"
 	t, err := time.Parse(time.RFC3339, timeStr)
 	if err != nil {
-		fmt.Printf("failed to parse time: %w", err)
-		return -1
+		log.Printf("failed to parse time %q: %v", timeStr, err)
+		return -1, false
 	}
 
 	// Start with 100% VFR probability
-	probability := 100
+	probability = 100
+	visibilityKnown = visibility != nil
 
 	// check daylight
-	dayLight, err := getDayLight(EDWN.Latitude, EDWN.Longitude, t)
+	dayLight, err := getDayLightFn(EDWN.Latitude, EDWN.Longitude, t)
 	if err != nil {
-		fmt.Printf("failed to get daylight: %w", err)
-		return -1
+		log.Printf("failed to get daylight for %s: %v", t.Format(time.RFC3339), err)
+		return -1, false
 	}
 
 	debug("calc vfr prob for %s", t.Format(time.RFC822))
@@ -471,7 +479,7 @@ func calculateVFRProbability(cloudBase *int, windSpeed, crosswind, crosswindGust
 	// outside civil twilight no go
 	if t.Before(dayLight.Parsed.CivilTwilightBegin) || t.After(dayLight.Parsed.CivilTwilightEnd) {
 		debugProb("outside civil twilight", "0")
-		return 0
+		return 0, visibilityKnown
 	}
 	// before sunrise and after sunset reduced...
 	if t.Before(dayLight.Parsed.Sunrise) || t.After(dayLight.Parsed.Sunset) {
@@ -484,12 +492,12 @@ func calculateVFRProbability(cloudBase *int, windSpeed, crosswind, crosswindGust
 		// cloud base is flight level!
 		if *cloudBase < 10 {
 			debugProb("cloudbase <1000ft", "0")
-			return 0
+			return 0, visibilityKnown
 		} else if *cloudBase < 15 {
 			debugProb("cloudbase <1500ft", "-50")
 			probability -= 50
 		} else if *cloudBase < 20 {
-			debugProb("cloudbase <2000ft", "-20")
+			debugProb("cloudbase <2000ft", "-25")
 			probability -= 25
 		} else if *cloudBase < 25 {
 			debugProb("cloudbase <2500ft", "-10")
@@ -546,13 +554,11 @@ func calculateVFRProbability(cloudBase *int, windSpeed, crosswind, crosswindGust
 	}
 
 	// Visibility rules
-	visibilityAvailable := false
 	if visibility != nil {
-		visibilityAvailable = true
 		if *visibility < 5 {
 			// When visibility below 5km, VFR is 0%
 			debugProb("visibility < 5km", "0")
-			return 0
+			return 0, visibilityKnown
 		} else if *visibility < 10 {
 			debugProb("visibility < 10km", "-50")
 			probability -= 50
@@ -608,17 +614,15 @@ func calculateVFRProbability(cloudBase *int, windSpeed, crosswind, crosswindGust
 		probability -= reduce
 	}
 
-	// Ensure probability is within -1 - 100 range
+	// Ensure probability is within 0 - 100 range. An hour without visibility keeps its
+	// score -- the remaining factors are still meaningful -- and is flagged instead.
 	if probability < 0 {
 		probability = 0
 	} else if probability > 100 {
 		probability = 100
 	}
-	if !visibilityAvailable {
-		probability = -1
-	}
 
-	return probability
+	return probability, visibilityKnown
 }
 
 type SunriseSunsetResponse struct {
@@ -653,6 +657,9 @@ var (
 		data: make(map[string]*SunriseSunsetResponse),
 	}
 )
+
+// getDayLightFn indirects getDayLight so tests can stub the network call.
+var getDayLightFn = getDayLight
 
 func getDayLight(latitude, longitude string, t time.Time) (*SunriseSunsetResponse, error) {
 

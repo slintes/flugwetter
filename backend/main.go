@@ -59,6 +59,10 @@ type VfrPoint struct {
 	Time        string `json:"time"`
 	Probability int    `json:"probability"`
 	WeatherCode string `json:"weather_code"`
+	// VisibilityKnown is false when the model had no visibility for this hour.
+	// Probability is then computed from the remaining factors and the frontend
+	// marks it as an estimate. A Probability of -1 means no score at all.
+	VisibilityKnown bool `json:"visibility_known"`
 }
 
 // responseWriter is a custom ResponseWriter that captures the status code
