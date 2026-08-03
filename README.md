@@ -165,8 +165,8 @@ GET /              # Main application page
 Default location (modify in `backend/weather.go`):
 ```go
 // Coordinates for weather data
-latitude := 52.13499946   // Northern Germany
-longitude := 7.684830594  // Example location
+latitude := 52.4575   // Northern Germany (EDWN)
+longitude := 7.1850  // Nordhorn-Lingen
 ```
 
 ### Chart Altitude Ranges
@@ -193,7 +193,7 @@ cacheDuration := 15 * time.Minute
 - ✅ Geopotential height conversion
 - ✅ Wind speeds in knots (aviation standard)
 
-**Location**: Latitude 52.13499946, Longitude 7.684830594
+**Location**: Latitude 52.4575, Longitude 7.1850 (EDWN Nordhorn-Lingen)
 
 ## 📁 Project Structure
 

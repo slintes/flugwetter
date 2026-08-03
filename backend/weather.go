@@ -4,20 +4,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 )
 
-type Location struct {
-	Latitude  string
-	Longitude string
+type Airport struct {
+	Identifier     string
+	Latitude       string
+	Longitude      string
+	RunwayHeadings []float64 // true headings in degrees, both ends of each runway
 }
 
-var EDDG = Location{
-	Latitude:  "52.1346",
-	Longitude: "7.6848",
+var EDWN = Airport{
+	Identifier: "EDWN",
+	Latitude:   "52.4575",
+	Longitude:  "7.1850",
+	// Runway 05/23. Published magnetic 050°/230°; variation at EDWN is
+	// ~2-3°E and is ignored (crosswind error < 1kt).
+	RunwayHeadings: []float64{50, 230},
 }
 
 // WeatherAPIResponse represents the complete API response from open-meteo
@@ -117,7 +124,7 @@ type WeatherCache struct {
 var (
 	cache         = &WeatherCache{}
 	cacheDuration = 15 * time.Minute
-	apiURL        = fmt.Sprintf("https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&hourly=precipitation_probability,pressure_msl,cloud_cover_low,cloud_cover,cloud_cover_mid,cloud_cover_high,convective_cloud_base,wind_speed_120m,wind_speed_180m,wind_direction_120m,wind_direction_180m,temperature_180m,temperature_120m,temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,rain,showers,snowfall,snow_depth,weather_code,surface_pressure,visibility,wind_speed_10m,wind_speed_80m,wind_direction_10m,wind_direction_80m,wind_gusts_10m,temperature_80m,cloud_cover_1000hPa,cloud_cover_975hPa,cloud_cover_950hPa,cloud_cover_925hPa,cloud_cover_900hPa,cloud_cover_850hPa,cloud_cover_800hPa,cloud_cover_700hPa,cloud_cover_600hPa,cloud_cover_500hPa,cloud_cover_400hPa,cloud_cover_300hPa,cloud_cover_200hPa,cloud_cover_250hPa,cloud_cover_150hPa,cloud_cover_100hPa,cloud_cover_70hPa,cloud_cover_50hPa,cloud_cover_30hPa,wind_speed_1000hPa,wind_speed_975hPa,wind_speed_950hPa,wind_speed_925hPa,wind_speed_900hPa,wind_speed_850hPa,wind_speed_800hPa,wind_speed_700hPa,wind_speed_600hPa,wind_direction_600hPa,wind_direction_700hPa,wind_direction_800hPa,wind_direction_850hPa,wind_direction_900hPa,wind_direction_925hPa,wind_direction_950hPa,wind_direction_975hPa,wind_direction_1000hPa,geopotential_height_1000hPa,geopotential_height_975hPa,geopotential_height_950hPa,geopotential_height_925hPa,geopotential_height_900hPa,geopotential_height_850hPa,geopotential_height_800hPa,geopotential_height_700hPa,geopotential_height_600hPa,geopotential_height_500hPa,geopotential_height_400hPa,geopotential_height_300hPa,geopotential_height_250hPa,geopotential_height_200hPa,geopotential_height_150hPa,geopotential_height_100hPa,geopotential_height_70hPa,geopotential_height_50hPa,geopotential_height_30hPa&models=icon_seamless&timezone=GMT&wind_speed_unit=kn", EDDG.Latitude, EDDG.Longitude)
+	apiURL        = fmt.Sprintf("https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&hourly=precipitation_probability,pressure_msl,cloud_cover_low,cloud_cover,cloud_cover_mid,cloud_cover_high,convective_cloud_base,wind_speed_120m,wind_speed_180m,wind_direction_120m,wind_direction_180m,temperature_180m,temperature_120m,temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,rain,showers,snowfall,snow_depth,weather_code,surface_pressure,visibility,wind_speed_10m,wind_speed_80m,wind_direction_10m,wind_direction_80m,wind_gusts_10m,temperature_80m,cloud_cover_1000hPa,cloud_cover_975hPa,cloud_cover_950hPa,cloud_cover_925hPa,cloud_cover_900hPa,cloud_cover_850hPa,cloud_cover_800hPa,cloud_cover_700hPa,cloud_cover_600hPa,cloud_cover_500hPa,cloud_cover_400hPa,cloud_cover_300hPa,cloud_cover_200hPa,cloud_cover_250hPa,cloud_cover_150hPa,cloud_cover_100hPa,cloud_cover_70hPa,cloud_cover_50hPa,cloud_cover_30hPa,wind_speed_1000hPa,wind_speed_975hPa,wind_speed_950hPa,wind_speed_925hPa,wind_speed_900hPa,wind_speed_850hPa,wind_speed_800hPa,wind_speed_700hPa,wind_speed_600hPa,wind_direction_600hPa,wind_direction_700hPa,wind_direction_800hPa,wind_direction_850hPa,wind_direction_900hPa,wind_direction_925hPa,wind_direction_950hPa,wind_direction_975hPa,wind_direction_1000hPa,geopotential_height_1000hPa,geopotential_height_975hPa,geopotential_height_950hPa,geopotential_height_925hPa,geopotential_height_900hPa,geopotential_height_850hPa,geopotential_height_800hPa,geopotential_height_700hPa,geopotential_height_600hPa,geopotential_height_500hPa,geopotential_height_400hPa,geopotential_height_300hPa,geopotential_height_250hPa,geopotential_height_200hPa,geopotential_height_150hPa,geopotential_height_100hPa,geopotential_height_70hPa,geopotential_height_50hPa,geopotential_height_30hPa&models=icon_seamless&timezone=GMT&wind_speed_unit=kn", EDWN.Latitude, EDWN.Longitude)
 )
 
 // GetWeatherData returns cached data if available and fresh, otherwise fetches new data
@@ -220,28 +227,38 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 			Base:        cloudBase,
 		})
 
-		// Get 10m wind speed and gusts for line chart
+		// Get 10m wind speed, gusts and direction for line chart
 		var windSpeed10m, windGusts10m float64
+		var windDirection10m int
 		if i < len(apiResponse.Hourly.WindSpeed10m) {
 			windSpeed10m = apiResponse.Hourly.WindSpeed10m[i]
 		}
 		if i < len(apiResponse.Hourly.WindGusts10m) {
 			windGusts10m = apiResponse.Hourly.WindGusts10m[i]
 		}
+		if i < len(apiResponse.Hourly.WindDirection10m) {
+			windDirection10m = apiResponse.Hourly.WindDirection10m[i]
+		}
+
+		// Crosswind components for the runway in use
+		crosswind10m := EDWN.crosswindComponent(windSpeed10m, windDirection10m)
+		crosswindGusts10m := EDWN.crosswindComponent(windGusts10m, windDirection10m)
 
 		// Add wind data - process all levels
 		windLayers := processWindLayers(apiResponse, i)
 		if len(windLayers) > 0 {
 			processed.WindData = append(processed.WindData, WindPoint{
-				Time:         timeStr,
-				WindSpeed10m: windSpeed10m,
-				WindGusts10m: windGusts10m,
-				WindLayers:   windLayers,
+				Time:              timeStr,
+				WindSpeed10m:      windSpeed10m,
+				WindGusts10m:      windGusts10m,
+				Crosswind10m:      crosswind10m,
+				CrosswindGusts10m: crosswindGusts10m,
+				WindLayers:        windLayers,
 			})
 		}
 
 		// Calculate VFR probability
-		vfrProbability := calculateVFRProbability(cloudBase, windSpeed10m, visibility, tempPoint, timeStr)
+		vfrProbability := calculateVFRProbability(cloudBase, windSpeed10m, crosswind10m, crosswindGusts10m, visibility, tempPoint, timeStr)
 
 		// Get weather code if available
 		weatherCode := -1 // Default to clear sky
@@ -256,7 +273,7 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 				fmt.Printf("failed to parse time: %w", err)
 			}
 			debug("time: %s", t)
-			dayLight, err := getDayLight(EDDG.Latitude, EDDG.Longitude, t)
+			dayLight, err := getDayLight(EDWN.Latitude, EDWN.Longitude, t)
 			if err != nil {
 				fmt.Printf("failed to get daylight: %w", err)
 			}
@@ -397,6 +414,18 @@ func getWindSymbol(speedKnots float64, direction int) string {
 	return "barb"
 }
 
+// crosswindComponent returns the crosswind in knots for a wind of speedKnots
+// from directionDegrees (meteorological, true north), taking the most
+// favourable of the airport's runway headings.
+func (a Airport) crosswindComponent(speedKnots float64, directionDegrees int) float64 {
+	crosswind := math.Inf(1)
+	for _, heading := range a.RunwayHeadings {
+		angle := (float64(directionDegrees) - heading) * math.Pi / 180
+		crosswind = math.Min(crosswind, math.Abs(speedKnots*math.Sin(angle)))
+	}
+	return crosswind
+}
+
 // getCloudBase calculates the cloud base
 // Returns the height as flight level if any
 func getCloudBase(cloudLayers []CloudLayer) *int {
@@ -414,10 +443,10 @@ func getCloudBase(cloudLayers []CloudLayer) *int {
 
 // calculateVFRProbability calculates the VFR probability based on weather conditions
 // Returns a percentage value (0-100)
-func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility *float64, tempPoint TemperaturePoint, timeStr string) int {
+func calculateVFRProbability(cloudBase *int, windSpeed, crosswind, crosswindGusts float64, visibility *float64, tempPoint TemperaturePoint, timeStr string) int {
 
 	debugProb := func(reason string, value string) {
-		debug(fmt.Sprintf("VFR probability modified, reaon %s, value %s", reason, value))
+		debug(fmt.Sprintf("VFR probability modified, reason %s, value %s", reason, value))
 	}
 
 	timeStr += ":00Z"
@@ -431,7 +460,7 @@ func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility *floa
 	probability := 100
 
 	// check daylight
-	dayLight, err := getDayLight(EDDG.Latitude, EDDG.Longitude, t)
+	dayLight, err := getDayLight(EDWN.Latitude, EDWN.Longitude, t)
 	if err != nil {
 		fmt.Printf("failed to get daylight: %w", err)
 		return -1
@@ -460,7 +489,7 @@ func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility *floa
 			debugProb("cloudbase <1500ft", "-50")
 			probability -= 50
 		} else if *cloudBase < 20 {
-			debugProb("cloudbase <2000ft", "-25")
+			debugProb("cloudbase <2000ft", "-20")
 			probability -= 25
 		} else if *cloudBase < 25 {
 			debugProb("cloudbase <2500ft", "-10")
@@ -471,19 +500,48 @@ func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility *floa
 		}
 	}
 
-	// Wind rules
-	// TODO calculate crosswind
-	if windSpeed > 20 {
-		reduce := int(4 * windSpeed)
-		debugProb("windspeed > 20", fmt.Sprintf("-%d", reduce))
-		probability -= reduce
-	} else if windSpeed > 15 {
-		reduce := int(3 * windSpeed)
-		debugProb("windspeed > 15", fmt.Sprintf("-%d", reduce))
-		probability -= reduce
-	} else if windSpeed > 10 {
-		reduce := int(2 * windSpeed)
+	// wind
+	sigWind := int(windSpeed) - 10
+	if sigWind > 0 {
+		reduce := 0
+		if sigWind > 15 {
+			reduce = 3 * sigWind
+		} else if sigWind > 10 {
+			reduce = 2 * sigWind
+		} else {
+			reduce = sigWind
+		}
 		debugProb("windspeed > 10", fmt.Sprintf("-%d", reduce))
+		probability -= reduce
+	}
+
+	// crosswind
+	sigCrossWind := int(crosswind) - 5
+	if sigCrossWind > 0 {
+		reduce := 0
+		if sigCrossWind > 10 {
+			reduce = 5 * sigCrossWind
+		} else if sigCrossWind > 5 {
+			reduce = 2 * sigCrossWind
+		} else {
+			reduce = sigCrossWind
+		}
+		debugProb("cross wind > 5", fmt.Sprintf("-%d", reduce))
+		probability -= reduce
+	}
+
+	// crosswind gusts
+	sigCrossWindGusts := int(crosswindGusts-crosswind) - 3
+	if sigCrossWindGusts > 0 {
+		reduce := 0
+		if sigCrossWindGusts > 7 {
+			reduce = 20
+		} else if sigCrossWindGusts > 2 {
+			reduce = 10
+		} else {
+			reduce = 5
+		}
+		debugProb("cross wind gusts", fmt.Sprintf("-%d", reduce))
 		probability -= reduce
 	}
 
@@ -540,6 +598,14 @@ func calculateVFRProbability(cloudBase *int, windSpeed float64, visibility *floa
 			debugProb("precipitation >= 2, prob >= 40", "-10")
 			probability -= 10
 		}
+	}
+
+	// high tmp > 28
+	tmp := int(tempPoint.Temperature) - 28
+	if tmp > 0 {
+		reduce := tmp * 3
+		debugProb("high temperature", fmt.Sprintf("-%d", reduce))
+		probability -= reduce
 	}
 
 	// Ensure probability is within -1 - 100 range

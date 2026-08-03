@@ -910,6 +910,27 @@ function initializeCharts() {
                 tension: 0.4,
                 borderDash: [5, 5],
                 yAxisID: 'y1'
+            }, {
+                type: 'line',
+                label: 'Crosswind 10m (kn)',
+                data: [],
+                borderColor: '#ff8c00',
+                backgroundColor: 'rgba(255, 140, 0, 0.1)',
+                borderWidth: 3,
+                fill: false,
+                tension: 0.4,
+                yAxisID: 'y1'
+            }, {
+                type: 'line',
+                label: 'Crosswind Gusts 10m (kn)',
+                data: [],
+                borderColor: '#ff8c00',
+                backgroundColor: 'rgba(255, 140, 0, 0.1)',
+                borderWidth: 2,
+                fill: false,
+                tension: 0.4,
+                borderDash: [5, 5],
+                yAxisID: 'y1'
             }]
         },
         options: {
@@ -985,6 +1006,10 @@ function initializeCharts() {
                                 return `Wind Speed: ${point.y.toFixed(1)} kn`;
                             } else if (context.dataset.label === 'Wind Gusts 10m (kn)') {
                                 return `Wind Gusts: ${point.y.toFixed(1)} kn`;
+                            } else if (context.dataset.label === 'Crosswind 10m (kn)') {
+                                return `Crosswind: ${point.y.toFixed(1)} kn`;
+                            } else if (context.dataset.label === 'Crosswind Gusts 10m (kn)') {
+                                return `Crosswind Gusts: ${point.y.toFixed(1)} kn`;
                             }
                             return '';
                         }
@@ -1099,6 +1124,8 @@ function updateCharts(data) {
     const windScatterData = [];
     const windSpeed10mData = [];
     const windGusts10mData = [];
+    const crosswind10mData = [];
+    const crosswindGusts10mData = [];
 
     if (data.wind_data) {
         data.wind_data.forEach(timePoint => {
@@ -1126,12 +1153,25 @@ function updateCharts(data) {
                 y: timePoint.wind_gusts_10m
             });
 
+            // Add line data for the crosswind components at 10m
+            crosswind10mData.push({
+                x: timeValue,
+                y: timePoint.crosswind_10m
+            });
+
+            crosswindGusts10mData.push({
+                x: timeValue,
+                y: timePoint.crosswind_gusts_10m
+            });
+
         });
     }
-    
+
     windChart.data.datasets[0].data = windScatterData;
     windChart.data.datasets[1].data = windSpeed10mData;
     windChart.data.datasets[2].data = windGusts10mData;
+    windChart.data.datasets[3].data = crosswind10mData;
+    windChart.data.datasets[4].data = crosswindGusts10mData;
     windChart.update();
 
     const vfrData = [];

@@ -40,10 +40,12 @@ type CloudLayer struct {
 }
 
 type WindPoint struct {
-	Time         string      `json:"time"`
-	WindSpeed10m float64     `json:"wind_speed_10m"`
-	WindGusts10m float64     `json:"wind_gusts_10m"`
-	WindLayers   []WindLayer `json:"wind_layers"`
+	Time              string      `json:"time"`
+	WindSpeed10m      float64     `json:"wind_speed_10m"`
+	WindGusts10m      float64     `json:"wind_gusts_10m"`
+	Crosswind10m      float64     `json:"crosswind_10m"`
+	CrosswindGusts10m float64     `json:"crosswind_gusts_10m"`
+	WindLayers        []WindLayer `json:"wind_layers"`
 }
 
 type WindLayer struct {

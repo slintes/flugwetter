@@ -34,8 +34,8 @@ go build -o flugwetter
 
 Weather data location (modify in `weather.go`):
 ```go
-latitude := 52.13499946
-longitude := 7.684830594
+latitude := 52.4575
+longitude := 7.1850
 ```
 
 ## Dependencies
