@@ -693,6 +693,9 @@ function initializeCharts() {
                 backgroundColor: 'transparent',
                 borderColor: 'transparent',
                 pointRadius: 0, // Hide points, we'll show symbols instead
+                // Flight levels, not feet — must not land on the logarithmic height
+                // axis, where FL0 would parse to a non-finite pixel.
+                yAxisID: 'yBase'
             }]
         },
         options: {
@@ -745,6 +748,15 @@ function initializeCharts() {
                             return value + ' km';
                         }
                     }
+                },
+                // Carrier axis for the Cloud Base dataset. It is drawn entirely by the
+                // cloudSymbols plugin at a fixed height, so this only needs to give the
+                // values a finite, linear home.
+                yBase: {
+                    type: 'linear',
+                    display: false,
+                    min: 0,
+                    max: 400
                 },
                 x: xAxisConfig(true),
             },
@@ -1167,16 +1179,19 @@ function updateCharts(data) {
             });
         }
 
-        // The visibility is already in kilometers
-        if (timePoint.visibility) {
+        // The visibility is already in kilometers.
+        // `null` means the model had no value; 0 means dense fog. Both are falsy, so a
+        // truthiness test here silently dropped the worst weather in the forecast.
+        if (timePoint.visibility != null) {
             visibilityData.push({
                 x: timeValue,
                 y: timePoint.visibility
             });
         }
 
-        // The cloud base
-        if (timePoint.base) {
+        // The cloud base, as a flight level. Same trap: FL0 is a ceiling below 100ft,
+        // not a missing reading.
+        if (timePoint.base != null) {
             cloudBaseData.push({
                 x: timeValue,
                 y: timePoint.base
