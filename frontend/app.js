@@ -18,12 +18,14 @@ function initializeCharts() {
     // VFR Chart
     const vfrCtx = document.getElementById('vfrChart').getContext('2d');
 
-    xAxisConfig = function(drawOnChartArea){
+    const xAxisConfig = function(drawOnChartArea){
         return {
             type: 'time',
-            distribution: 'linear',
+            // No `parser`: every x value is already an epoch-millisecond number. The
+            // previous 'YYYY-MM-DDTHH:mm' was a moment.js pattern, and under the
+            // date-fns adapter YYYY/DD mean week-numbering year and day-of-year, which
+            // that library throws on. `distribution` was a Chart.js v2 option.
             time: {
-                parser: 'YYYY-MM-DDTHH:mm',
                 unit: 'hour',
                 stepSize: 1,
                 displayFormats: {
@@ -1324,12 +1326,11 @@ function resetZoom(hours) {
 
 function resetChartZoom(chart, hours) {
     const xAxis = chart.scales.x;
-    xAxis.options.min = new Date();
-    min = undefined;
-    max = undefined;
+    let min;
+    let max;
     if ( hours !== undefined ) {
-        min = new Date(Date.now() - 3 * 60 * 60 * 1000) // start 3 hours ago
-        max = new Date(Date.now() + hours * 60 * 60 * 1000);
+        min = Date.now() - 3 * 60 * 60 * 1000; // start 3 hours ago
+        max = Date.now() + hours * 60 * 60 * 1000;
     }
     xAxis.options.min = min;
     xAxis.options.max = max;
@@ -1385,25 +1386,8 @@ function addManualPanZoom(chart) {
         xAxis.options.max = initialMax + timeShift;
         
         chart.update('none');
-        
-        // Sync with other charts
-        if (chart === temperatureChart) {
-            if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
-            if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
-            if (vfrChart) syncManualPan(vfrChart, xAxis.options.min, xAxis.options.max);
-        } else if (chart === cloudChart) {
-            if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
-            if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
-            if (vfrChart) syncManualPan(vfrChart, xAxis.options.min, xAxis.options.max);
-        } else if (chart === windChart) {
-            if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
-            if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
-            if (vfrChart) syncManualPan(vfrChart, xAxis.options.min, xAxis.options.max);
-        } else if (chart === vfrChart) {
-            if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
-            if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
-            if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
-        }
+
+        syncAllCharts(chart, xAxis.options.min, xAxis.options.max);
     });
     
     canvas.addEventListener('mouseup', function(e) {
@@ -1490,25 +1474,8 @@ function addManualPanZoom(chart) {
             xAxis.options.max = center + newRange / 2;
             
             chart.update('none');
-            
-            // Sync with other charts
-            if (chart === temperatureChart) {
-                if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
-                if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
-                if (vfrChart) syncManualPan(vfrChart, xAxis.options.min, xAxis.options.max);
-            } else if (chart === cloudChart) {
-                if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
-                if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
-                if (vfrChart) syncManualPan(vfrChart, xAxis.options.min, xAxis.options.max);
-            } else if (chart === windChart) {
-                if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
-                if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
-                if (vfrChart) syncManualPan(vfrChart, xAxis.options.min, xAxis.options.max);
-            } else if (chart === vfrChart) {
-                if (temperatureChart) syncManualPan(temperatureChart, xAxis.options.min, xAxis.options.max);
-                if (cloudChart) syncManualPan(cloudChart, xAxis.options.min, xAxis.options.max);
-                if (windChart) syncManualPan(windChart, xAxis.options.min, xAxis.options.max);
-            }
+
+            syncAllCharts(chart, xAxis.options.min, xAxis.options.max);
         }
     });
 }
