@@ -85,6 +85,55 @@ function initializeCharts() {
     // Preload icons when the page loads
     preloadWeatherIcons();
     
+    // Custom interaction mode: correlate datasets by TIME, not by array index.
+    //
+    // Chart.js' built-in 'index' mode takes the nearest element's array index and reads
+    // that same index out of every other dataset. That only works when all datasets are
+    // the same length. On the cloud and wind charts they are not: 'Cloud Layers' and
+    // 'Wind Layers' hold one point per pressure level per hour (~6/hour for wind), while
+    // the line series hold one point per hour. Hovering hour H would read index 6H from
+    // the line series — a different hour, or past the end of the array, in which case
+    // those rows vanished from the tooltip entirely.
+    //
+    // Matching on the x value is exact: every series derives x from the same
+    // `new Date(point.time + 'Z').getTime()` conversion. Within each dataset the
+    // y-closest candidate wins, so the tooltip still shows one row per dataset.
+    Chart.Interaction.modes.timeNearest = function(chart, e, options, useFinalPosition) {
+        const nearest = Chart.Interaction.modes.nearest(
+            chart, e, {...options, axis: 'x', intersect: false}, useFinalPosition);
+        if (!nearest.length) return [];
+
+        const seed = chart.data.datasets[nearest[0].datasetIndex].data[nearest[0].index];
+        if (!seed) return [];
+        const targetX = seed.x;
+
+        const position = Chart.helpers.getRelativePosition(e, chart);
+        const items = [];
+
+        chart.getSortedVisibleDatasetMetas().forEach(meta => {
+            const data = chart.data.datasets[meta.index].data;
+            let best = null;
+            let bestDy = Infinity;
+
+            for (let i = 0; i < data.length; i++) {
+                if (!data[i] || data[i].x !== targetX) continue;
+                const element = meta.data[i];
+                if (!element || element.skip) continue;
+
+                // Non-finite y (e.g. a log scale fed a zero) must never win the compare.
+                const dy = Math.abs(element.y - position.y);
+                if (dy < bestDy) {
+                    bestDy = dy;
+                    best = {element, datasetIndex: meta.index, index: i};
+                }
+            }
+
+            if (best) items.push(best);
+        });
+
+        return items;
+    };
+
     // Custom plugin to render midnight date labels (day-of-week + date, larger + bold; time smaller)
     Chart.register({
         id: 'midnightDateLabels',
@@ -651,7 +700,10 @@ function initializeCharts() {
             maintainAspectRatio: false,
             interaction: {
                 intersect: false,
-                mode: 'index'
+                // 'Cloud Layers' holds one point per level per hour, the line series one
+                // per hour, so index-based correlation reads the wrong time. See the
+                // timeNearest registration above.
+                mode: 'timeNearest'
             },
             events: ['mousedown', 'mousemove', 'mouseup', 'click', 'mouseover', 'mouseout', 'wheel'],
             scales: {
@@ -953,7 +1005,9 @@ function initializeCharts() {
             maintainAspectRatio: false,
             interaction: {
                 intersect: false,
-                mode: 'index'
+                // 'Wind Layers' holds ~6 points per hour against 1 per hour for the four
+                // line series. See the timeNearest registration above.
+                mode: 'timeNearest'
             },
             events: ['mousedown', 'mousemove', 'mouseup', 'click', 'mouseover', 'mouseout', 'wheel'],
             scales: {
