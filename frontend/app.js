@@ -252,11 +252,14 @@ function initializeCharts() {
                                 // Draw weather icon if available
                                 if (point.weatherCode !== undefined) {
                                     const weatherCode = point.weatherCode;
-                                    const iconFilename = weatherCodeToIcon[weatherCode] || "notavailable.svg";
+                                    const iconFilename = weatherCodeToIcon[weatherCode];
                                     const maxIconSize = 36;
                                     const iconY = yPos - 36; // Position above the text
 
                                     function drawIcon(img, x, y) {
+                                        // Icons carry only a viewBox and are not square
+                                        // (cloudy is 84x44), so preserve aspect ratio.
+                                        // The fallback covers browsers reporting 0.
                                         const natW = img.naturalWidth || maxIconSize;
                                         const natH = img.naturalHeight || maxIconSize;
                                         const scale = Math.min(maxIconSize / natW, maxIconSize / natH);
@@ -265,19 +268,33 @@ function initializeCharts() {
                                         ctx.drawImage(img, x - w/2, y - h/2, w, h);
                                     }
 
-                                    // Use cached icon if available, otherwise load it
-                                    if (weatherIconCache[iconFilename] && weatherIconCache[iconFilename].complete) {
-                                        drawIcon(weatherIconCache[iconFilename], xPos, iconY);
+                                    if (!iconFilename) {
+                                        // Unknown code. Draw a glyph rather than pointing
+                                        // at a placeholder file that does not exist.
+                                        ctx.fillStyle = '#999';
+                                        ctx.font = '20px Narrow';
+                                        ctx.fillText('?', xPos, iconY);
                                     } else {
-                                        // Create and cache a new image if not in cache
-                                        if (!weatherIconCache[iconFilename]) {
-                                            const img = new Image();
+                                        let img = weatherIconCache[iconFilename];
+                                        if (!img) {
+                                            img = new Image();
                                             img.src = `static/icons/${iconFilename}`;
                                             weatherIconCache[iconFilename] = img;
+                                        }
 
-                                            img.onload = function() {
-                                                drawIcon(img, xPos, iconY);
-                                            };
+                                        if (img.complete && img.naturalWidth) {
+                                            drawIcon(img, xPos, iconY);
+                                        } else if (!img.redrawHooked) {
+                                            // preloadWeatherIcons() puts every icon in the
+                                            // cache up front, so the old "not cached yet"
+                                            // branch could never fire and a still-decoding
+                                            // icon drew nothing and never retried. Ask the
+                                            // chart to redraw instead of painting directly:
+                                            // a direct draw would land outside the render
+                                            // pass, unclipped, at coordinates captured
+                                            // before any pan.
+                                            img.redrawHooked = true;
+                                            img.addEventListener('load', () => chart.draw(), {once: true});
                                         }
                                     }
                                 }
