@@ -274,6 +274,59 @@ func TestProcessWeatherData_SeriesStayAligned(t *testing.T) {
 	}
 }
 
+func TestParseSunriseSunset(t *testing.T) {
+	const good = `{"results":{"sunrise":"2026-08-03T03:30:00+00:00",
+		"sunset":"2026-08-03T19:30:00+00:00",
+		"civil_twilight_begin":"2026-08-03T02:40:00+00:00",
+		"civil_twilight_end":"2026-08-03T20:20:00+00:00"},"status":"OK"}`
+
+	t.Run("valid response", func(t *testing.T) {
+		got, err := parseSunriseSunset([]byte(good), "2026-08-03")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Parsed.Sunrise.UTC().Hour() != 3 {
+			t.Errorf("sunrise hour = %d, want 3", got.Parsed.Sunrise.UTC().Hour())
+		}
+		if got.Parsed.CivilTwilightEnd.UTC().Hour() != 20 {
+			t.Errorf("civil twilight end hour = %d, want 20", got.Parsed.CivilTwilightEnd.UTC().Hour())
+		}
+	})
+
+	// Each of these used to be accepted, leaving zero times that read as "outside civil
+	// twilight" for every hour and zeroed the whole VFR series without a log line.
+	bad := []struct {
+		name string
+		body string
+	}{
+		{"non-OK status", `{"results":{},"status":"INVALID_REQUEST"}`},
+		{"empty results with OK status", `{"results":{},"status":"OK"}`},
+		{
+			name: "missing civil twilight end",
+			body: `{"results":{"sunrise":"2026-08-03T03:30:00+00:00",
+				"sunset":"2026-08-03T19:30:00+00:00",
+				"civil_twilight_begin":"2026-08-03T02:40:00+00:00",
+				"civil_twilight_end":""},"status":"OK"}`,
+		},
+		{
+			name: "unparseable sunrise",
+			body: `{"results":{"sunrise":"not a time",
+				"sunset":"2026-08-03T19:30:00+00:00",
+				"civil_twilight_begin":"2026-08-03T02:40:00+00:00",
+				"civil_twilight_end":"2026-08-03T20:20:00+00:00"},"status":"OK"}`,
+		},
+	}
+
+	for _, tc := range bad {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseSunriseSunset([]byte(tc.body), "2026-08-03")
+			if err == nil {
+				t.Fatalf("got no error and result %+v, want an error", got.Parsed)
+			}
+		})
+	}
+}
+
 func TestCrosswindComponent(t *testing.T) {
 	// EDWN runway 05/23, true headings {50, 230}.
 	tests := []struct {

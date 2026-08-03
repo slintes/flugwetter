@@ -697,45 +697,57 @@ func getDayLight(latitude, longitude string, t time.Time) (*SunriseSunsetRespons
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	result, err := parseSunriseSunset(body, dateStr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cache the result
+	sunriseCache.mutex.Lock()
+	sunriseCache.data[cacheKey] = result
+	sunriseCache.mutex.Unlock()
+
+	return result, nil
+}
+
+// parseSunriseSunset decodes a sunrise-sunset.org response and requires every field the
+// VFR calculation depends on.
+//
+// Previously an empty field was skipped, leaving its Parsed value at the zero time
+// (year 1). Every hour then compared as "after civil twilight end", which silently drove
+// the entire VFR series to 0 and suffixed every icon with -night — with nothing in the
+// log to say why, because `status` was decoded but never read. A degraded upstream must
+// fail loudly instead: calculateVFRProbability turns the error into -1, which the
+// frontend renders as "no data" rather than as a forecast of universally bad weather.
+func parseSunriseSunset(body []byte, dateStr string) (*SunriseSunsetResponse, error) {
 	var result SunriseSunsetResponse
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse API response: %w", err)
 	}
 
-	// Parse the result
-
-	if result.Results.Sunrise != "" {
-		result.Parsed.Sunrise, err = time.Parse(time.RFC3339, result.Results.Sunrise)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse sunrise time: %w", err)
-		}
+	if result.Status != "OK" {
+		return nil, fmt.Errorf("sunrise API returned status %q for %s", result.Status, dateStr)
 	}
 
-	if result.Results.Sunset != "" {
-		result.Parsed.Sunset, err = time.Parse(time.RFC3339, result.Results.Sunset)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse sunset time: %w", err)
+	for _, f := range []struct {
+		name string
+		raw  string
+		dst  *time.Time
+	}{
+		{"sunrise", result.Results.Sunrise, &result.Parsed.Sunrise},
+		{"sunset", result.Results.Sunset, &result.Parsed.Sunset},
+		{"civil twilight begin", result.Results.CivilTwilight_Begin, &result.Parsed.CivilTwilightBegin},
+		{"civil twilight end", result.Results.CivilTwilight_End, &result.Parsed.CivilTwilightEnd},
+	} {
+		if f.raw == "" {
+			return nil, fmt.Errorf("sunrise API returned no %s for %s", f.name, dateStr)
 		}
-	}
-
-	if result.Results.CivilTwilight_Begin != "" {
-		result.Parsed.CivilTwilightBegin, err = time.Parse(time.RFC3339, result.Results.CivilTwilight_Begin)
+		parsed, err := time.Parse(time.RFC3339, f.raw)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse civil twilight begin time: %w", err)
+			return nil, fmt.Errorf("failed to parse %s time %q: %w", f.name, f.raw, err)
 		}
+		*f.dst = parsed
 	}
-
-	if result.Results.CivilTwilight_End != "" {
-		result.Parsed.CivilTwilightEnd, err = time.Parse(time.RFC3339, result.Results.CivilTwilight_End)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse civil twilight end time: %w", err)
-		}
-	}
-
-	// Cache the result
-	sunriseCache.mutex.Lock()
-	sunriseCache.data[cacheKey] = &result
-	sunriseCache.mutex.Unlock()
 
 	return &result, nil
 }
