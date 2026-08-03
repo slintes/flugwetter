@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -216,6 +218,37 @@ func TestProcessWeatherData_CalmHourKeepsWindRow(t *testing.T) {
 		}
 		if wp.WindLayers == nil {
 			t.Errorf("WindData[%d].WindLayers is nil, want an empty slice so it marshals as []", i)
+		}
+	}
+}
+
+func TestProcessWeatherData_SurvivesDaylightLookupFailure(t *testing.T) {
+	original := getDayLightFn
+	getDayLightFn = func(latitude, longitude string, _ time.Time) (*SunriseSunsetResponse, error) {
+		return nil, errors.New("sunrise API unavailable")
+	}
+	t.Cleanup(func() { getDayLightFn = original })
+
+	times := []string{"2026-08-03T10:00", "2026-08-03T11:00"}
+
+	// Previously the error was logged and dayLight.Parsed.Sunrise dereferenced anyway.
+	// On the startup cache warm that panic takes the whole process down.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("processWeatherData panicked on a daylight lookup failure: %v", r)
+		}
+	}()
+	got := processWeatherData(hourlyFixture(times))
+
+	if len(got.VfrData) != len(times) {
+		t.Fatalf("len(VfrData) = %d, want %d", len(got.VfrData), len(times))
+	}
+	for i, vp := range got.VfrData {
+		if vp.Probability != -1 {
+			t.Errorf("VfrData[%d].Probability = %d, want -1 when the hour cannot be scored", i, vp.Probability)
+		}
+		if strings.HasSuffix(vp.WeatherCode, "-night") {
+			t.Errorf("VfrData[%d].WeatherCode = %q, want no -night suffix from a failed lookup", i, vp.WeatherCode)
 		}
 	}
 }

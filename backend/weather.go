@@ -263,25 +263,24 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 		vfrProbability, visibilityKnown := calculateVFRProbability(cloudBase, windSpeed10m, crosswind10m, crosswindGusts10m, visibility, tempPoint, timeStr)
 
 		// Get weather code if available
-		weatherCode := -1 // Default to clear sky
 		processWeatherCode := ""
 		if i < len(apiResponse.Hourly.WeatherCode) {
-			weatherCode = apiResponse.Hourly.WeatherCode[i]
-			processWeatherCode = strconv.Itoa(weatherCode)
+			processWeatherCode = strconv.Itoa(apiResponse.Hourly.WeatherCode[i])
 
-			// is daylight?
+			// is daylight? Both lookups can fail, and neither result is usable then --
+			// the icon simply keeps its daytime variant rather than taking the process
+			// down with a nil dereference.
 			t, err := time.Parse(time.RFC3339, timeStr+":00Z")
 			if err != nil {
 				log.Printf("failed to parse time %q: %v", timeStr, err)
-			}
-			debug("time: %s", t)
-			dayLight, err := getDayLightFn(EDWN.Latitude, EDWN.Longitude, t)
-			if err != nil {
-				log.Printf("failed to get daylight for %s: %v", timeStr, err)
-			}
-			isDaylight := t.After(dayLight.Parsed.Sunrise) && t.Before(dayLight.Parsed.Sunset)
-			if !isDaylight {
-				processWeatherCode = fmt.Sprintf("%s%s", processWeatherCode, "-night")
+			} else {
+				debug("time: %s", t)
+				dayLight, err := getDayLightFn(EDWN.Latitude, EDWN.Longitude, t)
+				if err != nil {
+					log.Printf("failed to get daylight for %s: %v", timeStr, err)
+				} else if !(t.After(dayLight.Parsed.Sunrise) && t.Before(dayLight.Parsed.Sunset)) {
+					processWeatherCode += "-night"
+				}
 			}
 		}
 		processed.VfrData = append(processed.VfrData, VfrPoint{
