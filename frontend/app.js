@@ -1233,15 +1233,19 @@ function updateCharts(data) {
             // Convert UTC time string to local timezone Date object
             const timeValue = new Date(timePoint.time + 'Z').getTime(); // Add 'Z' to indicate UTC
             
-            timePoint.wind_layers.forEach(layer => {
-                windScatterData.push({
-                    x: timeValue,
-                    y: layer.height_feet,
-                    speed: layer.speed,
-                    direction: layer.direction,
-                    symbol: layer.symbol
+            // Guarded: this was the one unguarded forEach in updateCharts, and a throw
+            // here aborts the function before the VFR chart is updated further down.
+            if (timePoint.wind_layers) {
+                timePoint.wind_layers.forEach(layer => {
+                    windScatterData.push({
+                        x: timeValue,
+                        y: layer.height_feet,
+                        speed: layer.speed,
+                        direction: layer.direction,
+                        symbol: layer.symbol
+                    });
                 });
-            });
+            }
 
             // Add line data for wind speed and gusts at 10m
             windSpeed10mData.push({

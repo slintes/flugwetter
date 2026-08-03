@@ -245,18 +245,19 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 		crosswind10m := EDWN.crosswindComponent(windSpeed10m, windDirection10m)
 		crosswindGusts10m := EDWN.crosswindComponent(windGusts10m, windDirection10m)
 
-		// Add wind data - process all levels
-		windLayers := processWindLayers(apiResponse, i)
-		if len(windLayers) > 0 {
-			processed.WindData = append(processed.WindData, WindPoint{
-				Time:              timeStr,
-				WindSpeed10m:      windSpeed10m,
-				WindGusts10m:      windGusts10m,
-				Crosswind10m:      crosswind10m,
-				CrosswindGusts10m: crosswindGusts10m,
-				WindLayers:        windLayers,
-			})
-		}
+		// Add wind data - process all levels.
+		// Always emit a WindPoint, even when no level qualified: the 10m speed, gusts
+		// and crosswind are independent of the layer barbs, and dropping the whole hour
+		// punched a hole in all five wind series that the chart's spline then smoothed
+		// straight across.
+		processed.WindData = append(processed.WindData, WindPoint{
+			Time:              timeStr,
+			WindSpeed10m:      windSpeed10m,
+			WindGusts10m:      windGusts10m,
+			Crosswind10m:      crosswind10m,
+			CrosswindGusts10m: crosswindGusts10m,
+			WindLayers:        processWindLayers(apiResponse, i),
+		})
 
 		// Calculate VFR probability
 		vfrProbability, visibilityKnown := calculateVFRProbability(cloudBase, windSpeed10m, crosswind10m, crosswindGusts10m, visibility, tempPoint, timeStr)
@@ -323,7 +324,8 @@ func processCloudLayers(apiResponse *WeatherAPIResponse, timeIndex int) []CloudL
 		{apiResponse.Hourly.CloudCover30hPa, apiResponse.Hourly.GeopotentialHeight30hPa},
 	}
 
-	var layers []CloudLayer
+	// Non-nil so an overcast-free hour marshals as [] rather than null.
+	layers := make([]CloudLayer, 0)
 
 	for _, level := range pressureLevels {
 		// Check if data is available for this time index
@@ -367,7 +369,8 @@ func processWindLayers(apiResponse *WeatherAPIResponse, timeIndex int) []WindLay
 		{apiResponse.Hourly.WindSpeed600hPa, apiResponse.Hourly.WindDirection600hPa, apiResponse.Hourly.GeopotentialHeight600hPa},
 	}
 
-	var layers []WindLayer
+	// Non-nil so a calm hour marshals as [] rather than null.
+	layers := make([]WindLayer, 0)
 
 	// Process hPa-based levels only
 	for i, level := range windLevels {

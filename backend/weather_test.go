@@ -173,6 +173,74 @@ func TestGetCloudBase(t *testing.T) {
 	}
 }
 
+// hourlyFixture builds a response whose hourly arrays are all the same length, with
+// every wind level dead calm so processWindLayers yields nothing.
+func hourlyFixture(times []string) *WeatherAPIResponse {
+	n := len(times)
+	zerosF := make([]float64, n)
+	zerosI := make([]int, n)
+	visibility := make([]*float64, n)
+	for i := range visibility {
+		visibility[i] = ptrFloat(30000)
+	}
+
+	r := &WeatherAPIResponse{}
+	r.Hourly.Time = times
+	r.Hourly.Temperature2m = zerosF
+	r.Hourly.DewPoint2m = zerosF
+	r.Hourly.Precipitation = zerosF
+	r.Hourly.PrecipitationProbability = zerosI
+	r.Hourly.WeatherCode = zerosI
+	r.Hourly.Visibility = visibility
+	r.Hourly.WindSpeed10m = zerosF
+	r.Hourly.WindGusts10m = zerosF
+	r.Hourly.WindDirection10m = zerosI
+	return r
+}
+
+func TestProcessWeatherData_CalmHourKeepsWindRow(t *testing.T) {
+	stubDayLight(t)
+	times := []string{"2026-08-03T10:00", "2026-08-03T11:00", "2026-08-03T12:00"}
+
+	got := processWeatherData(hourlyFixture(times))
+
+	// The regression: `if len(windLayers) > 0` dropped the entire WindPoint when no
+	// level qualified, taking the 10m speed, gusts and both crosswind series with it
+	// and leaving a hole the chart's spline smoothed straight across.
+	if len(got.WindData) != len(times) {
+		t.Fatalf("len(WindData) = %d, want %d — a calm hour must keep its row", len(got.WindData), len(times))
+	}
+	for i, wp := range got.WindData {
+		if wp.Time != times[i] {
+			t.Errorf("WindData[%d].Time = %q, want %q", i, wp.Time, times[i])
+		}
+		if wp.WindLayers == nil {
+			t.Errorf("WindData[%d].WindLayers is nil, want an empty slice so it marshals as []", i)
+		}
+	}
+}
+
+func TestProcessWeatherData_SeriesStayAligned(t *testing.T) {
+	stubDayLight(t)
+	times := []string{"2026-08-03T10:00", "2026-08-03T11:00", "2026-08-03T12:00"}
+
+	got := processWeatherData(hourlyFixture(times))
+
+	for _, tc := range []struct {
+		name string
+		n    int
+	}{
+		{"TemperatureData", len(got.TemperatureData)},
+		{"CloudData", len(got.CloudData)},
+		{"WindData", len(got.WindData)},
+		{"VfrData", len(got.VfrData)},
+	} {
+		if tc.n != len(times) {
+			t.Errorf("len(%s) = %d, want %d", tc.name, tc.n, len(times))
+		}
+	}
+}
+
 func TestCrosswindComponent(t *testing.T) {
 	// EDWN runway 05/23, true headings {50, 230}.
 	tests := []struct {
