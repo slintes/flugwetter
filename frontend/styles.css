@@ -228,8 +228,8 @@ canvas {
 .vfr-container canvas {
     min-height: 150px;
     max-height: 150px;
-    padding-left: 50px;
-    padding-right: 80px;
+    /* No padding here: the VFR chart reserves the other charts' axis space through
+       layout.padding in app.js, so all four plot areas line up exactly. */
 }
 
 .chart-legend {

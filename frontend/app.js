@@ -293,6 +293,18 @@ function fitMapToAirports() {
     airportMap.fitBounds(L.latLngBounds(points), { padding: [40, 40] });
 }
 
+// All four charts share one time axis, so their plot areas have to start and end at the
+// same x. Left to itself, Chart.js sizes each y axis to its own tick labels ("35" vs
+// "10000ft"), which pushed the four plot areas 59px apart on the left and 72px on the
+// right — the same hour sat at a different pixel in every chart. Pinning both axis widths
+// to a constant is what keeps them aligned; the values are the widest the axes naturally
+// wanted, so no label is clipped. A new chart must use the same two constants, and the
+// VFR chart, which has no visible axis at all, pads by them instead.
+const Y_AXIS_WIDTH_LEFT = 82;
+const Y_AXIS_WIDTH_RIGHT = 81;
+
+const pinAxisWidth = width => scale => { scale.width = width; };
+
 function initializeCharts() {
     // VFR Chart
     const vfrCtx = document.getElementById('vfrChart').getContext('2d');
@@ -610,6 +622,12 @@ function initializeCharts() {
                 mode: 'index'
             },
             events: ['mousedown', 'mousemove', 'mouseup', 'click', 'mouseover', 'mouseout', 'wheel'],
+            // No visible y axis here, so the space the other charts give their axes has to
+            // come from padding instead, or this chart's time axis would run wider than
+            // theirs.
+            layout: {
+                padding: { left: Y_AXIS_WIDTH_LEFT, right: Y_AXIS_WIDTH_RIGHT }
+            },
             scales: {
                 y: {
                     display: false, // No y-axis as per requirements
@@ -705,6 +723,7 @@ function initializeCharts() {
                     display: true,
                     position: 'left',
                     beginAtZero: false,
+                    afterFit: pinAxisWidth(Y_AXIS_WIDTH_LEFT),
                     grid: {
                         color: 'rgba(0,0,0,0.1)'
                     },
@@ -721,6 +740,7 @@ function initializeCharts() {
                     beginAtZero: true,
                     min: 0.09,
                     max: 30,
+                    afterFit: pinAxisWidth(Y_AXIS_WIDTH_RIGHT),
                     grid: {
                         drawOnChartArea: false,
                     },
@@ -1013,6 +1033,7 @@ function initializeCharts() {
                     position: 'left',
                     min: 200, // low-level clouds
                     max: 12000, // Max altitude
+                    afterFit: pinAxisWidth(Y_AXIS_WIDTH_LEFT),
                     grid: {
                         color: 'rgba(0,0,0,0.1)'
                     },
@@ -1033,6 +1054,7 @@ function initializeCharts() {
                     position: 'right',
                     min: 0,
                     max: 80, // Maximum visibility
+                    afterFit: pinAxisWidth(Y_AXIS_WIDTH_RIGHT),
                     grid: {
                         drawOnChartArea: false, // Don't draw grid lines for second axis
                     },
@@ -1326,6 +1348,7 @@ function initializeCharts() {
                     position: 'left',
                     min: 20,
                     max: 10000, // Max altitude in ft
+                    afterFit: pinAxisWidth(Y_AXIS_WIDTH_LEFT),
                     grid: {
                         color: 'rgba(0,0,0,0.1)'
                     },
@@ -1344,6 +1367,7 @@ function initializeCharts() {
                     type: 'linear',
                     position: 'right',
                     min: 0,
+                    afterFit: pinAxisWidth(Y_AXIS_WIDTH_RIGHT),
                     grid: {
                         drawOnChartArea: false, // Don't draw grid lines for second axis
                     },
