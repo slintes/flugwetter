@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { barbComponents, isCalm, CALM_THRESHOLD_KT } from './barbs.js';
+import { barbComponents, isCalm, CALM_THRESHOLD_KT } from '../frontend/js/barbs.js';
 
 // Wind barbs are read off the chart at a glance, so the decomposition has to be exactly
 // the meteorological convention: a pennant per 50kt, a full barb per 10kt, a half barb for

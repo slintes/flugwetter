@@ -22,7 +22,7 @@ test:
 	gofmt -l main.go internal/server internal/web
 	go vet ./...
 	go test ./...
-	cd internal/web/frontend && node --test 'js/*.test.js'
+	node --test 'internal/web/jstest/*.test.js'
 
 # Run locally with the frontend served from disk, so CSS and JS edits show up on reload
 # without rebuilding the binary. Without this the embedded copy is served.

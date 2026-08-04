@@ -11,7 +11,7 @@ const {
     VFR_METRICS_WIDE, VFR_METRICS_NARROW,
     axisWidths, vfrMetrics, isNarrowViewport, isWideViewport, isLowDensity, applyDensity,
     pinAxisWidth,
-} = await import('./viewport.js');
+} = await import('../frontend/js/viewport.js');
 
 const atWidth = (px, fn) => {
     window.innerWidth = px;

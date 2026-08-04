@@ -148,8 +148,11 @@ func Run() error {
 	_, _ = GetWeatherData(ctx, defaultAirport)
 
 	// Serve static files from the embedded frontend (or from disk under FLUGWETTER_DEV).
-	frontend := web.Root()
-	mux.Handle("GET /static/", web.StaticHandler(frontend))
+	assets, err := web.New()
+	if err != nil {
+		return fmt.Errorf("failed to load frontend assets: %w", err)
+	}
+	mux.Handle("GET /static/", assets.StaticHandler())
 
 	// API endpoints
 	mux.HandleFunc("GET /api/config", getConfig)
@@ -162,7 +165,7 @@ func Run() error {
 	}
 	// "GET /{$}" matches only the root path; a bare "GET /" would also catch every
 	// unmatched URL, which gorilla's exact-match router did not do.
-	mux.Handle("GET /{$}", web.IndexHandler(frontend))
+	mux.Handle("GET /{$}", assets.IndexHandler())
 
 	srv := &http.Server{
 		Addr:              ":8080",
@@ -210,6 +213,9 @@ type ConfigResponse struct {
 
 func getConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	// The airport list only changes when the server restarts, but a stale one would offer
+	// airfields the backend would then reject, so this is deliberately short.
+	w.Header().Set("Cache-Control", "private, max-age=60")
 
 	config := ConfigResponse{
 		Airports:       airports,
@@ -240,6 +246,18 @@ func getWeatherData(w http.ResponseWriter, r *http.Request) {
 		slog.Error("failed to fetch weather data", "airport", airport.Identifier, "error", err)
 		http.Error(w, "Failed to fetch weather data", http.StatusInternalServerError)
 		return
+	}
+
+	// Tell the browser how long this payload stays current. The backend refreshes on a
+	// 15-minute cycle, so a reload inside that window can be served from the local cache
+	// instead of re-fetching 136KB. Stale data is never cacheable: it must be re-requested
+	// as soon as upstream might be reachable again.
+	if data.Stale {
+		w.Header().Set("Cache-Control", "no-store")
+	} else if remaining := cacheDuration - time.Since(data.GeneratedAt); remaining > 0 {
+		w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d", int(remaining.Seconds())))
+	} else {
+		w.Header().Set("Cache-Control", "no-cache")
 	}
 
 	if err := json.NewEncoder(w).Encode(data); err != nil {

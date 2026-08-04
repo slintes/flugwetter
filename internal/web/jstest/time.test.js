@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { toEpochMs } from './time.js';
+import { toEpochMs } from '../frontend/js/time.js';
 
 // The whole point of this helper: Open-Meteo sends naive timestamps under timezone=GMT, so
 // they have to be read as UTC. Parsing them as local time shifts the entire forecast by the
