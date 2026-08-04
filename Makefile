@@ -59,9 +59,24 @@ build:
 
 # Run the container. OPENAIP_API_KEY is passed through when set in the environment;
 # without it the map picker falls back to the OpenStreetMap base layer alone.
+# The healthcheck is attached to the container rather than baked into the image: an image
+# HEALTHCHECK is a Docker-schema field that podman drops from an OCI image. `podman ps` then
+# reports healthy/unhealthy, and the same command is what a pod manifest livenessProbe would
+# exec.
+#
+# JSON array form is required. A bare string is treated as a shell command, and the runtime
+# image is scratch -- there is no /bin/sh, so every probe would exit 1 and the container
+# would sit there permanently "unhealthy" while serving perfectly well.
 .PHONY: run
 run:
-	podman run --rm --name flugwetter -p 8080:8080 -e OPENAIP_API_KEY $(IMAGE_NAME):latest
+	podman run --rm --name flugwetter -p 8080:8080 \
+		-e OPENAIP_API_KEY \
+		--health-cmd '["/flugwetter","-healthcheck"]' \
+		--health-interval=30s \
+		--health-timeout=5s \
+		--health-start-period=20s \
+		--health-retries=3 \
+		$(IMAGE_NAME):latest
 
 # Push both tags. The commit tag is what makes a rollback possible: re-tag an older one as
 # latest on the server and restart.

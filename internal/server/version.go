@@ -1,8 +1,20 @@
 package server
 
 import (
+	"context"
+	"fmt"
+	"net/http"
 	"runtime/debug"
 	"strings"
+	"time"
+)
+
+const (
+	// healthcheckURL targets the loopback address inside the container. /api/config is the
+	// right probe: it exercises the router and the loaded airport list without touching
+	// Open-Meteo, so a healthcheck never depends on an upstream being reachable.
+	healthcheckURL     = "http://127.0.0.1:8080/api/config"
+	healthcheckTimeout = 3 * time.Second
 )
 
 // Build information, set at link time:
@@ -73,4 +85,30 @@ func shortSHA(revision string) string {
 		return revision[:shortLength]
 	}
 	return strings.TrimSpace(revision)
+}
+
+// Healthcheck asks a running instance whether it is serving, and is how the container image
+// probes itself.
+//
+// It exists because the runtime image is scratch: there is no shell, no curl and no wget for
+// a HEALTHCHECK to call, so the binary has to be able to probe itself.
+func Healthcheck() error {
+	ctx, cancel := context.WithTimeout(context.Background(), healthcheckTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthcheckURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to build the healthcheck request: %w", err)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("healthcheck request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthcheck returned status %d", resp.StatusCode)
+	}
+	return nil
 }
