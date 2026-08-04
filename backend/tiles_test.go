@@ -16,6 +16,10 @@ func TestServeOpenAIPTileRejectsBadCoordinates(t *testing.T) {
 		path string
 	}{
 		{"non-numeric zoom", "/api/tiles/openaip/x/1/1.png"},
+		// The stdlib route matches the whole final segment, so the .png is validated in
+		// the handler rather than by the pattern.
+		{"missing .png extension", "/api/tiles/openaip/7/66/41"},
+		{"non-numeric y with a valid extension", "/api/tiles/openaip/7/66/abc.png"},
 		{"zoom above the map maximum", "/api/tiles/openaip/20/1/1.png"},
 		{"negative zoom", "/api/tiles/openaip/-1/1/1.png"},
 		// At zoom 2 the grid is 4x4, so x=4 does not exist.

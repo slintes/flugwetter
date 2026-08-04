@@ -10,8 +10,6 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-
-	"github.com/gorilla/mux"
 )
 
 const DEBUG = false
@@ -134,32 +132,31 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	r := mux.NewRouter()
+	mux := http.NewServeMux()
 
 	// pre cache weather data for the default airport only. Warming all of them would fire
 	// one very large Open-Meteo request per airfield before the first user arrives.
 	_, _ = GetWeatherData(ctx, defaultAirport)
 
-	// Add logging middleware to log all requests
-	r.Use(loggingMiddleware)
-
 	// Serve static files
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("../frontend/"))))
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("../frontend/"))))
 
 	// API endpoints
-	r.HandleFunc("/api/config", getConfig).Methods("GET")
-	r.HandleFunc("/api/weather", getWeatherData).Methods("GET")
+	mux.HandleFunc("GET /api/config", getConfig)
+	mux.HandleFunc("GET /api/weather", getWeatherData)
 	if openAIPEnabled() {
-		r.HandleFunc(tileRoute, serveOpenAIPTile).Methods("GET")
+		mux.HandleFunc(tileRoute, serveOpenAIPTile)
 		fmt.Println("openAIP overlay enabled")
 	} else {
 		fmt.Printf("openAIP overlay disabled: set %s to enable it\n", openAIPKeyEnv)
 	}
-	r.HandleFunc("/", serveIndex).Methods("GET")
+	// "GET /{$}" matches only the root path; a bare "GET /" would also catch every
+	// unmatched URL, which gorilla's exact-match router did not do.
+	mux.HandleFunc("GET /{$}", serveIndex)
 
 	srv := &http.Server{
 		Addr:              ":8080",
-		Handler:           r,
+		Handler:           loggingMiddleware(mux),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,

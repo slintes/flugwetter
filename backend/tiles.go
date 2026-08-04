@@ -7,10 +7,9 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
-
-	"github.com/gorilla/mux"
 )
 
 // openAIPKeyEnv holds the openAIP API key. Without it the tile proxy is not registered and
@@ -72,23 +71,38 @@ func openAIPAPIKey() string {
 	return os.Getenv(openAIPKeyEnv)
 }
 
-// tileRoute is the proxy path. It is defined once so the server and the tests agree on it.
-const tileRoute = "/api/tiles/openaip/{z}/{x}/{y}.png"
+// tileRoute is the proxy path, including the method, so the server and the tests agree on
+// both. Wildcards are stdlib ServeMux patterns, read back with r.PathValue.
+//
+// The final segment is {y} rather than {y}.png because a stdlib wildcard must span a whole
+// path segment -- "{y}.png" is rejected at registration. The served URL is unchanged: the
+// handler takes "41.png" and strips the extension itself, so Leaflet's tile template and
+// any cached URLs keep working.
+const tileRoute = "GET /api/tiles/openaip/{z}/{x}/{y}"
+
+// tileExtension is required in the request path, so the route does not also answer to
+// /api/tiles/openaip/7/66/41 with no extension.
+const tileExtension = ".png"
 
 // newTileRouter returns a router serving only the tile proxy.
-func newTileRouter() *mux.Router {
-	r := mux.NewRouter()
-	r.HandleFunc(tileRoute, serveOpenAIPTile).Methods(http.MethodGet)
-	return r
+func newTileRouter() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc(tileRoute, serveOpenAIPTile)
+	return mux
 }
 
 // serveOpenAIPTile proxies one tile from openAIP, attaching the API key server-side so it
 // is never shipped to the browser, and caching the result.
 func serveOpenAIPTile(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	z, errZ := strconv.Atoi(vars["z"])
-	x, errX := strconv.Atoi(vars["x"])
-	y, errY := strconv.Atoi(vars["y"])
+	yParam := r.PathValue("y")
+	if !strings.HasSuffix(yParam, tileExtension) {
+		http.Error(w, "Invalid tile coordinates", http.StatusBadRequest)
+		return
+	}
+
+	z, errZ := strconv.Atoi(r.PathValue("z"))
+	x, errX := strconv.Atoi(r.PathValue("x"))
+	y, errY := strconv.Atoi(strings.TrimSuffix(yParam, tileExtension))
 	if errZ != nil || errX != nil || errY != nil {
 		http.Error(w, "Invalid tile coordinates", http.StatusBadRequest)
 		return
