@@ -5,12 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Flugwetter - Aviation Weather Forecast</title>
     <link rel="icon" type="image/svg+xml" href="static/favicon.svg">
-    <!-- Pinned: unversioned jsDelivr URLs follow the latest release, so the charts
-         could change behaviour without a commit here. -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
-    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Vendored and served same-origin rather than from a CDN. See vendor/README.md for
+         versions and how to update them. Nothing on this page loads from a third party,
+         which is what lets the page work on a captive portal or a weak mobile signal, and
+         what makes a strict Content-Security-Policy possible. -->
+    <script src="static/vendor/chart.umd.min.js"></script>
+    <script src="static/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <link rel="stylesheet" href="static/vendor/leaflet.css">
+    <script src="static/vendor/leaflet.js"></script>
 
     <link rel="stylesheet" href="static/styles.css">
 </head>
