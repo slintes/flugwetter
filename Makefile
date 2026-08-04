@@ -24,6 +24,13 @@ test:
 	go test ./...
 	node --test 'internal/web/jstest/*.test.js'
 
+# Install the checked-in git hooks. core.hooksPath points git at .githooks/ rather than
+# copying anything into .git/, so an update to a hook takes effect without reinstalling.
+.PHONY: hooks
+hooks:
+	git config core.hooksPath .githooks
+	@echo "git hooks installed (unset with: git config --unset core.hooksPath)"
+
 # Run locally with the frontend served from disk, so CSS and JS edits show up on reload
 # without rebuilding the binary. Without this the embedded copy is served.
 .PHONY: dev
@@ -66,6 +73,7 @@ help:
 	@echo "  all     - Build image and run container (default)"
 	@echo "  test    - Run the Go and frontend test suites"
 	@echo "  dev     - Run locally with the frontend served from disk"
+	@echo "  hooks   - Install the checked-in git hooks"
 	@echo "  build   - Build container image"
 	@echo "  run     - Run container"
 	@echo "  push    - Push image to registry"

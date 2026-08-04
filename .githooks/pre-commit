@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+#
+# Runs the same checks as `make test` before a commit is created.
+#
+# A hook only protects the machine it is installed on, so it is checked in here and
+# installed with `make hooks` rather than left to be recreated by hand.
+#
+# Set SKIP_HOOKS=1 to bypass (git commit --no-verify does the same).
+set -euo pipefail
+
+if [ "${SKIP_HOOKS:-}" = "1" ]; then
+    echo "pre-commit: skipped (SKIP_HOOKS=1)"
+    exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+fail() {
+    echo
+    echo "pre-commit: $1"
+    echo "pre-commit: commit aborted. Fix it, or bypass with 'git commit --no-verify'."
+    exit 1
+}
+
+# gofmt lists the files it would change, so any output at all is a failure. The paths are
+# explicit because gofmt does not skip dot-directories and .history/ holds stray .go files.
+echo "pre-commit: gofmt"
+unformatted="$(gofmt -l main.go internal/server internal/web)"
+[ -z "$unformatted" ] || fail "these files need gofmt:
+$unformatted"
+
+echo "pre-commit: go vet"
+go vet ./... || fail "go vet failed"
+
+echo "pre-commit: go test"
+go test ./... || fail "Go tests failed"
+
+echo "pre-commit: node --test"
+if command -v node >/dev/null 2>&1; then
+    node --test 'internal/web/jstest/*.test.js' >/dev/null || fail "frontend tests failed"
+else
+    echo "pre-commit: node not found, skipping the frontend tests"
+fi
+
+echo "pre-commit: ok"
