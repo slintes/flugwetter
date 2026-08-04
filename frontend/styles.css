@@ -176,12 +176,51 @@ header p {
 }
 
 .airport-tooltip {
-    background: rgba(255,255,255,0.85);
+    /* 0.9 rather than fully opaque: Leaflet puts tooltips on their own GPU layer with
+       translate3d, and a translucent background there drops the text from subpixel to
+       grayscale antialiasing. At 0.9 the map still reads through without the text
+       thinning noticeably — the earlier "broken capitals" turned out to be the fractional
+       physical size, not the transparency, so there is room for this. */
+    background: rgba(255, 255, 255, 0.9);
     border: none;
+    border-radius: 4px;
     box-shadow: none;
     font-weight: bold;
-    font-size: 0.75rem;
+    font-size: 12px;
     padding: 1px 4px;
+}
+
+/* Keep in step with WIDE_VIEWPORT in app.js, which steps the marker radius at the same
+   width. A 12px label against a 2560px screen reads as undersized. Whole pixels only —
+   see the note on .airport-tooltip above. */
+@media (min-width: 1600px) {
+    .airport-tooltip {
+        font-size: 14px;
+        padding: 2px 6px;
+    }
+
+    /* The hover detail is Leaflet's own popup, which is 13px regardless of screen size. */
+    .leaflet-popup-content {
+        font-size: 15px;
+        line-height: 1.45;
+    }
+}
+
+/* devicePixelRatio below 1 — browser zoom under 100%, or a display scale below it. Set by
+   applyDensity() in app.js, which also re-runs on zoom.
+   Two problems to fix at once: the CSS sizes above are physically 25% smaller than they
+   read, and any size that is not a whole number of physical pixels (14px x 0.75 = 10.5)
+   rasterises at a half pixel and gets downsampled, which mangles bold capitals. Every
+   value here is a multiple of 4, so 0.75 lands on a whole pixel. */
+:root[data-density="low"] .airport-tooltip {
+    font-size: 20px;
+    padding: 4px 8px;
+    border-radius: 8px;
+}
+
+:root[data-density="low"] .leaflet-popup-content {
+    font-size: 20px;
+    line-height: 1.4;
 }
 
 .airport-tooltip::before {

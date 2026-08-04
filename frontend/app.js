@@ -11,6 +11,7 @@ const AIRPORT_STORAGE_KEY = 'flugwetter.airport';
 
 // Initialize charts when page loads
 document.addEventListener('DOMContentLoaded', function() {
+    applyDensity();
     initializeCharts();
 
     // The zoom is set once the data is in, by updateCharts -- see initialZoomHours(),
@@ -189,8 +190,12 @@ function closeAirportMap() {
 // opened, leaving grey gaps on the way out and clipped tiles on the way in. The view itself
 // is left alone -- refitting would undo whatever the user panned to.
 window.addEventListener('resize', () => {
+    // Zooming the browser changes devicePixelRatio and fires resize.
+    applyDensity();
     if (airportMap && !document.getElementById('airportMapModal').hidden) {
         airportMap.invalidateSize();
+        // Re-applies the marker styles, which carry the viewport-dependent radius.
+        updateMapSelection();
     }
 });
 
@@ -235,7 +240,12 @@ function initAirportMap() {
     appConfig.airports.forEach(airport => {
         const marker = L.circleMarker([airport.latitude, airport.longitude], markerStyle(false))
             .addTo(airportMap)
-            .bindTooltip(airport.identifier, { permanent: true, direction: 'right', className: 'airport-tooltip' });
+            .bindTooltip(airport.identifier, {
+                permanent: true,
+                direction: 'right',
+                className: 'airport-tooltip',
+                offset: [tooltipOffsetX(), 0]
+            });
 
         // Details on hover, not on click. bindPopup() would open on click -- the same click
         // that selects the airport and closes the modal -- so the popup flashed on the way
@@ -260,9 +270,32 @@ function initAirportMap() {
     updateMapSelection();
 }
 
+// Marker radii. Leaflet takes these in CSS pixels, so without a step here a 2560px screen
+// gets the same 7px dot as a 1280px one and it reads as undersized.
+const MARKER_RADII = { normal: 7, selected: 10 };
+const MARKER_RADII_WIDE = { normal: 9, selected: 13 };
+// Multiples of 4 so the diameter stays a whole number of physical pixels at dpr 0.75.
+const MARKER_RADII_LOW_DENSITY = { normal: 12, selected: 16 };
+
+function markerRadii() {
+    if (isLowDensity()) {
+        return MARKER_RADII_LOW_DENSITY;
+    }
+    return isWideViewport() ? MARKER_RADII_WIDE : MARKER_RADII;
+}
+
+// Leaflet anchors a path's tooltip at the marker's centre, not its edge, so the label has
+// to be pushed clear of the circle by hand — otherwise a larger radius grows out over it.
+// The offset uses the *selected* radius for every marker, which is the largest a marker can
+// get, so the labels stay in a straight line as the selection moves between them.
+function tooltipOffsetX() {
+    return markerRadii().selected + 6;
+}
+
 function markerStyle(selected) {
+    const radii = markerRadii();
     return {
-        radius: selected ? 10 : 7,
+        radius: selected ? radii.selected : radii.normal,
         color: '#ffffff',
         weight: 2,
         fillColor: selected ? '#d63031' : '#0984e3',
@@ -278,8 +311,19 @@ function airportPopup(airport) {
 }
 
 function updateMapSelection() {
+    const offset = tooltipOffsetX();
     Object.keys(airportMarkers).forEach(identifier => {
-        airportMarkers[identifier].setStyle(markerStyle(identifier === currentAirportId));
+        const marker = airportMarkers[identifier];
+        marker.setStyle(markerStyle(identifier === currentAirportId));
+
+        // The offset is fixed at bind time, so a density or viewport change that alters the
+        // radius would otherwise leave the label sitting on top of the circle.
+        const tooltip = marker.getTooltip();
+        if (tooltip && tooltip.options.offset[0] !== offset) {
+            tooltip.options.offset = L.point(offset, 0);
+            marker.closeTooltip();
+            marker.openTooltip();
+        }
     });
 }
 
@@ -309,9 +353,35 @@ const AXIS_WIDTHS_NARROW = { left: 54, right: 52 };
 
 // Phones report 360-430 CSS px in portrait, so 600 puts the switch clear of that band.
 const NARROW_VIEWPORT = 600;
+// Above this the map's markers and labels, which are fixed pixel sizes, start to look
+// undersized against the rest of the page. Kept in step with the media query for
+// .airport-tooltip in styles.css.
+const WIDE_VIEWPORT = 1600;
 
 function isNarrowViewport() {
     return window.innerWidth <= NARROW_VIEWPORT;
+}
+
+function isWideViewport() {
+    return window.innerWidth >= WIDE_VIEWPORT;
+}
+
+// A devicePixelRatio below 1 means the page is being rendered smaller than its CSS pixels
+// — browser zoom under 100%, or a display scale below it. Two consequences, both of which
+// hit the map labels: everything is physically smaller than the CSS numbers suggest, and a
+// size that is not a whole number of physical pixels (14px at dpr 0.75 is 10.5) rasterises
+// at a half pixel and is then downsampled, which visibly mangles bold capitals.
+//
+// The compensating sizes live in styles.css under [data-density="low"] and are multiples
+// of 4, so they stay whole physical pixels at 0.75.
+function isLowDensity() {
+    return window.devicePixelRatio < 1;
+}
+
+// applyDensity exposes the above to CSS. devicePixelRatio changes when the user zooms, and
+// a zoom fires resize, so this is re-run from the same listener as the map sizing.
+function applyDensity() {
+    document.documentElement.dataset.density = isLowDensity() ? 'low' : 'normal';
 }
 
 function axisWidths() {
