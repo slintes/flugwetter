@@ -166,7 +166,7 @@ func Run() error {
 
 	srv := &http.Server{
 		Addr:              ":8080",
-		Handler:           loggingMiddleware(mux),
+		Handler:           loggingMiddleware(gzipMiddleware(mux)),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
