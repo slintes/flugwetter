@@ -42,6 +42,11 @@
                 <button onclick="loadWeatherData()">Retry</button>
             </div>
 
+            <!-- Shown when the backend served an expired cache entry because Open-Meteo was
+                 unreachable. Old forecast data is still useful, but it must never be
+                 presented as current. -->
+            <div class="stale" id="stale" role="status" style="display: none;"></div>
+
             <div class="charts-area">
             <div class="charts-grid">
                 <div class="chart-container vfr-container">

@@ -336,6 +336,22 @@ func TestProcessWeatherData_ResolvesDaylightOncePerDate(t *testing.T) {
 	}
 }
 
+// GeneratedAt is what fetchAndCacheWeatherData stores as the cache entry's timestamp, so an
+// unset value would make every entry look permanently expired.
+func TestProcessWeatherData_SetsGeneratedAt(t *testing.T) {
+	stubDayLight(t)
+
+	before := time.Now()
+	got := processWeatherData(context.Background(), hourlyFixture([]string{"2026-08-03T10:00"}), testAirport)
+
+	if got.GeneratedAt.Before(before) || got.GeneratedAt.After(time.Now()) {
+		t.Errorf("GeneratedAt = %v, want a timestamp from during this call", got.GeneratedAt)
+	}
+	if got.Stale {
+		t.Error("Stale = true on freshly processed data")
+	}
+}
+
 // stubFetchWeather replaces the upstream weather call for the duration of the test and
 // resets the cache, which is package-level state shared between tests.
 func stubFetchWeather(t *testing.T, fn func(context.Context, Airport) (*ProcessedWeatherData, error)) {
@@ -355,19 +371,61 @@ func stubFetchWeather(t *testing.T, fn func(context.Context, Airport) (*Processe
 	cache.mutex.Unlock()
 }
 
+// With upstream down and the TTL expired, a 16-minute-old forecast is far more useful than
+// an error page -- but it must arrive flagged, or the dashboard presents it as current.
+func TestFetchAndCacheWeatherData_ServesStaleOnFailure(t *testing.T) {
+	stubFetchWeather(t, func(context.Context, Airport) (*ProcessedWeatherData, error) {
+		return nil, errors.New("open-meteo unreachable")
+	})
+
+	expired := &ProcessedWeatherData{
+		TemperatureData: []TemperaturePoint{{Time: "2026-08-03T10:00", Temperature: 18}},
+		GeneratedAt:     time.Now().Add(-30 * time.Minute),
+	}
+	cache.mutex.Lock()
+	cache.entries[testAirport.Identifier] = &cacheEntry{data: expired, timestamp: expired.GeneratedAt}
+	cache.mutex.Unlock()
+
+	got, err := fetchAndCacheWeatherData(context.Background(), testAirport)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !got.Stale {
+		t.Error("Stale = false, want true when an expired entry was served")
+	}
+	if len(got.TemperatureData) != 1 {
+		t.Errorf("len(TemperatureData) = %d, want the cached payload's 1", len(got.TemperatureData))
+	}
+	// The shared cached payload must not have been mutated -- other goroutines hold it.
+	if expired.Stale {
+		t.Error("the cached payload was mutated; Stale must only be set on the returned copy")
+	}
+}
+
+// With nothing cached there is nothing to fall back to, and the error has to surface.
+func TestFetchAndCacheWeatherData_ErrorsWithoutCache(t *testing.T) {
+	stubFetchWeather(t, func(context.Context, Airport) (*ProcessedWeatherData, error) {
+		return nil, errors.New("open-meteo unreachable")
+	})
+
+	if _, err := fetchAndCacheWeatherData(context.Background(), testAirport); err == nil {
+		t.Error("got no error, want one when the fetch fails and the cache is empty")
+	}
+}
+
 // The fetch runs with no lock held, so a slower one can return after a fresher entry has
 // already been stored. It must not clobber it.
 func TestFetchAndCacheWeatherData_KeepsFresherEntry(t *testing.T) {
-	fresh := &ProcessedWeatherData{}
+	fresh := &ProcessedWeatherData{GeneratedAt: time.Now()}
 
 	stubFetchWeather(t, func(context.Context, Airport) (*ProcessedWeatherData, error) {
 		// Simulates a fetch that started earlier and finished later: while it was in
 		// flight, another goroutine stored a newer entry.
 		cache.mutex.Lock()
-		cache.entries[testAirport.Identifier] = &cacheEntry{data: fresh, timestamp: time.Now()}
+		cache.entries[testAirport.Identifier] = &cacheEntry{data: fresh, timestamp: fresh.GeneratedAt}
 		cache.mutex.Unlock()
 
-		return &ProcessedWeatherData{}, nil
+		return &ProcessedWeatherData{GeneratedAt: time.Now().Add(-time.Minute)}, nil
 	})
 
 	got, err := fetchAndCacheWeatherData(context.Background(), testAirport)

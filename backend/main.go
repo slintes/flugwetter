@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -18,6 +19,13 @@ type ProcessedWeatherData struct {
 	CloudData       []CloudPoint       `json:"cloud_data"`
 	WindData        []WindPoint        `json:"wind_data"`
 	VfrData         []VfrPoint         `json:"vfr_data"`
+	// GeneratedAt is when this payload was built from an upstream response. It doubles as
+	// the cache entry's timestamp, so the two can never disagree.
+	GeneratedAt time.Time `json:"generated_at"`
+	// Stale is true when upstream was unreachable and an expired cache entry was served
+	// instead. The frontend must say so: silently presenting old weather as current is the
+	// one failure a flight-planning tool cannot afford.
+	Stale bool `json:"stale"`
 }
 
 type TemperaturePoint struct {

@@ -406,6 +406,19 @@ canvas {
     }
 }
 
+/* Amber rather than the error red: the data on screen is usable, it is just old. Loud
+   enough not to be missed, quiet enough not to read as a failure. */
+.stale {
+    text-align: center;
+    background: #78350f;
+    color: #fef3c7;
+    border: 1px solid #92400e;
+    border-radius: 12px;
+    padding: 12px 20px;
+    margin-bottom: 10px;
+    font-weight: 500;
+}
+
 .error {
     text-align: center;
     background: #7f1d1d;

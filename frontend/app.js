@@ -1661,7 +1661,37 @@ async function loadWeatherData() {
     }
 }
 
+// formatAge renders a whole number of minutes as something readable next to a forecast.
+function formatAge(minutes) {
+    if (minutes < 60) {
+        return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    if (rest === 0) {
+        return `${hours} hour${hours === 1 ? '' : 's'}`;
+    }
+    return `${hours} h ${rest} min`;
+}
+
+// The backend falls back to an expired cache entry when Open-Meteo is unreachable, and
+// flags it with `stale`. That has to be visible: the charts look identical either way, and
+// for flight planning old weather shown as current is the failure that matters.
+function updateStaleBanner(data) {
+    const element = document.getElementById('stale');
+
+    if (!data.stale || !data.generated_at) {
+        element.style.display = 'none';
+        return;
+    }
+
+    const ageMinutes = Math.max(0, Math.round((Date.now() - new Date(data.generated_at).getTime()) / 60000));
+    element.textContent = `Upstream unavailable — showing forecast data from ${formatAge(ageMinutes)} ago.`;
+    element.style.display = 'block';
+}
+
 function updateCharts(data) {
+    updateStaleBanner(data);
 
     // Update temperature chart with time-based data
     // Convert UTC time strings to local timezone Date objects

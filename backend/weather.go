@@ -171,6 +171,14 @@ func GetWeatherData(ctx context.Context, airport Airport) (*ProcessedWeatherData
 	return fetchAndCacheWeatherData(ctx, airport)
 }
 
+// cachedEntry returns the stored entry for an airport regardless of its age.
+func cachedEntry(identifier string) (*cacheEntry, bool) {
+	cache.mutex.RLock()
+	defer cache.mutex.RUnlock()
+	entry, ok := cache.entries[identifier]
+	return entry, ok
+}
+
 // fetchAndCacheWeatherData fetches fresh data from the API and caches it.
 //
 // The upstream call deliberately runs with no lock held. Holding the cache mutex across it
@@ -181,9 +189,21 @@ func GetWeatherData(ctx context.Context, airport Airport) (*ProcessedWeatherData
 func fetchAndCacheWeatherData(ctx context.Context, airport Airport) (*ProcessedWeatherData, error) {
 	fmt.Printf("Fetching fresh weather data from API for %s...\n", airport.Identifier)
 
-	startedAt := time.Now()
 	processedData, err := fetchWeatherFn(ctx, airport)
 	if err != nil {
+		// Forecast data ages gracefully, so an expired entry beats no data at all when
+		// upstream is unreachable. It is flagged rather than passed off as current: for a
+		// flight-planning tool, silently showing stale weather is the worse failure.
+		if entry, ok := cachedEntry(airport.Identifier); ok {
+			log.Printf("Serving stale weather data for %s (fetched %s ago): %v",
+				airport.Identifier, time.Since(entry.timestamp).Round(time.Minute), err)
+
+			// A shallow copy: the cached payload is shared with other goroutines and must
+			// not be mutated. Only the flag differs, and the slices are never written to.
+			stale := *entry.data
+			stale.Stale = true
+			return &stale, nil
+		}
 		return nil, err
 	}
 
@@ -191,13 +211,13 @@ func fetchAndCacheWeatherData(ctx context.Context, airport Airport) (*ProcessedW
 	defer cache.mutex.Unlock()
 
 	// Another goroutine may have stored a fresher entry while this fetch was in flight.
-	if entry, ok := cache.entries[airport.Identifier]; ok && entry.timestamp.After(startedAt) {
+	if entry, ok := cache.entries[airport.Identifier]; ok && entry.timestamp.After(processedData.GeneratedAt) {
 		return entry.data, nil
 	}
 
 	cache.entries[airport.Identifier] = &cacheEntry{
 		data:      processedData,
-		timestamp: time.Now(),
+		timestamp: processedData.GeneratedAt,
 	}
 
 	fmt.Printf("Successfully cached weather data for %s with %d data points\n", airport.Identifier, len(processedData.TemperatureData))
@@ -273,6 +293,7 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 		TemperatureData: make([]TemperaturePoint, 0),
 		CloudData:       make([]CloudPoint, 0),
 		WindData:        make([]WindPoint, 0),
+		GeneratedAt:     time.Now(),
 	}
 
 	// One lookup per date, before the loop, rather than two per hour inside it.
