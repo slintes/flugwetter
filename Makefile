@@ -4,6 +4,13 @@
 # Image name and tag
 IMAGE_NAME = quay.io/slintes/flugwetter
 
+# Deployment target. The restart script lives on the server, not here: it pulls the image,
+# replays /var/server/flugwetter.yaml as a podman pod and restarts the nginx proxy in front
+# of it. It refers to that yaml by a relative path, so it has to run from /var/server.
+SSH_HOST = web
+SERVER_DIR = /var/server
+RESTART_SCRIPT = restartFlugwetter.sh
+
 # Default target: build and run
 .PHONY: all
 all: build run
@@ -24,12 +31,27 @@ run:
 push:
 	podman push $(IMAGE_NAME)
 
+# Restart the deployment on the server. Only useful after `push` -- the script pulls
+# whatever is currently tagged latest in the registry, so restarting without pushing first
+# just redeploys the image that is already running.
+# -t allocates a tty for password prompts
+.PHONY: restart
+restart:
+	ssh -t $(SSH_HOST) 'cd $(SERVER_DIR) && sudo ./$(RESTART_SCRIPT)'
+
+# Full deployment: build, push, restart. Serial by design -- restarting before the push
+# finishes would redeploy the old image.
+.PHONY: deploy
+deploy: build push restart
+
 # Help target
 .PHONY: help
 help:
 	@echo "Available targets:"
-	@echo "  all    - Build image and run container (default)"
-	@echo "  build  - Build container image"
-	@echo "  run    - Run container"
-	@echo "  push   - Push image to registry"
-	@echo "  help   - Show this help message"
+	@echo "  all     - Build image and run container (default)"
+	@echo "  build   - Build container image"
+	@echo "  run     - Run container"
+	@echo "  push    - Push image to registry"
+	@echo "  restart - Restart the deployment on $(SSH_HOST)"
+	@echo "  deploy  - Build, push and restart (full deployment)"
+	@echo "  help    - Show this help message"
