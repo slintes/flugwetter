@@ -441,6 +441,11 @@ const VFR_SLOT_GAP = 4;      // so neighbours are visibly apart, not merely touc
 const INITIAL_ZOOM_MIN_HOURS = 3;
 const INITIAL_ZOOM_MAX_HOURS = 72;
 
+// How far a touch must travel before it counts as horizontal (pan) or vertical (page
+// scroll). Low enough that a pan still feels immediate, high enough that the first few
+// pixels of a scroll are not read as a pan.
+const TOUCH_AXIS_LOCK_PX = 8;
+
 let initialZoomApplied = false;
 
 // vfrSlotWidth returns the horizontal room one hour needs before the icon or the label
@@ -1919,6 +1924,11 @@ function addManualPanZoom(chart) {
     
     // Touch support for mobile pan
     let touchStartX = null;
+    let touchStartY = null;
+    // 'x' pans the time axis, 'y' is the browser's to scroll. Null until the gesture has
+    // moved far enough to tell them apart; once set it holds for the whole gesture, so a
+    // drifting finger cannot flip a page scroll into a pan half way through.
+    let touchAxis = null;
     let touchInitialMin = null;
     let touchInitialMax = null;
     let lastPinchDistance = null;
@@ -1926,6 +1936,8 @@ function addManualPanZoom(chart) {
     canvas.addEventListener('touchstart', function(e) {
         if (e.touches.length === 1) {
             touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            touchAxis = null;
             const xAxis = chart.scales.x;
             touchInitialMin = xAxis.min;
             touchInitialMax = xAxis.max;
@@ -1939,8 +1951,25 @@ function addManualPanZoom(chart) {
 
     canvas.addEventListener('touchmove', function(e) {
         if (e.touches.length === 1 && touchStartX !== null) {
-            e.preventDefault();
             const deltaX = e.touches[0].clientX - touchStartX;
+            const deltaY = e.touches[0].clientY - touchStartY;
+
+            if (touchAxis === null) {
+                // Too small to read a direction from yet -- do nothing rather than guess.
+                if (Math.abs(deltaX) < TOUCH_AXIS_LOCK_PX && Math.abs(deltaY) < TOUCH_AXIS_LOCK_PX) {
+                    return;
+                }
+                touchAxis = Math.abs(deltaX) > Math.abs(deltaY) ? 'x' : 'y';
+            }
+            if (touchAxis === 'y') {
+                return; // the page scrolls; touch-action: pan-y lets the browser do it
+            }
+
+            // Once the browser has committed to scrolling, touchmove is no longer
+            // cancelable and preventDefault only logs a warning.
+            if (e.cancelable) {
+                e.preventDefault();
+            }
             const xAxis = chart.scales.x;
             const chartArea = chart.chartArea;
             const pixelRange = chartArea.right - chartArea.left;
@@ -1952,7 +1981,9 @@ function addManualPanZoom(chart) {
             chart.update('none');
             syncAllCharts(chart, xAxis.options.min, xAxis.options.max);
         } else if (e.touches.length === 2 && lastPinchDistance !== null) {
-            e.preventDefault();
+            if (e.cancelable) {
+                e.preventDefault();
+            }
             const currentDistance = Math.abs(e.touches[0].clientX - e.touches[1].clientX);
             const zoomFactor = lastPinchDistance / currentDistance;
             const xAxis = chart.scales.x;
@@ -1970,8 +2001,18 @@ function addManualPanZoom(chart) {
     canvas.addEventListener('touchend', function(e) {
         if (e.touches.length === 0) {
             touchStartX = null;
+            touchStartY = null;
+            touchAxis = null;
             lastPinchDistance = null;
         }
+    }, {passive: true});
+
+    // A gesture the browser takes over for scrolling ends in touchcancel, not touchend.
+    canvas.addEventListener('touchcancel', function() {
+        touchStartX = null;
+        touchStartY = null;
+        touchAxis = null;
+        lastPinchDistance = null;
     }, {passive: true});
 
     // Zoom with wheel only when Ctrl key is pressed

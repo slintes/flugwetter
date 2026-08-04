@@ -272,6 +272,11 @@ canvas {
     min-height: 150px;
     max-width: 100%;
     flex-grow: 1;
+    /* Horizontal drags pan the time axis (handled in app.js), vertical ones must still
+       scroll the page -- on a phone the charts fill the viewport, so swallowing them
+       leaves no way to scroll. pan-y hands vertical gestures back to the browser and
+       keeps horizontal ones for us; app.js locks to one axis per gesture to match. */
+    touch-action: pan-y;
 }
 
 .vfr-container {
