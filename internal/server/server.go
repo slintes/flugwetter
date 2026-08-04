@@ -1,15 +1,19 @@
-package main
+// Package server is the whole application: the HTTP surface, the Open-Meteo and
+// sunrise-sunset clients, the caches and the VFR scoring.
+package server
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"flugwetter/internal/web"
 )
 
 // ProcessedWeatherData represents the data structure sent to the frontend
@@ -122,13 +126,14 @@ const (
 	shutdownGrace = 10 * time.Second
 )
 
-func main() {
+// Run starts the server and blocks until a shutdown signal arrives. It returns an error
+// rather than exiting, so main owns the process lifecycle.
+func Run() error {
 	setupLogging()
 
 	// A broken airport list is fatal: an empty one renders as a working UI with no data.
 	if err := loadAirports(); err != nil {
-		slog.Error("failed to load airports", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to load airports: %w", err)
 	}
 
 	// Signal-driven shutdown, so `make restart` drains in-flight requests rather than
@@ -142,8 +147,9 @@ func main() {
 	// one very large Open-Meteo request per airfield before the first user arrives.
 	_, _ = GetWeatherData(ctx, defaultAirport)
 
-	// Serve static files
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("../frontend/"))))
+	// Serve static files from the embedded frontend (or from disk under FLUGWETTER_DEV).
+	frontend := web.Root()
+	mux.Handle("GET /static/", web.StaticHandler(frontend))
 
 	// API endpoints
 	mux.HandleFunc("GET /api/config", getConfig)
@@ -156,7 +162,7 @@ func main() {
 	}
 	// "GET /{$}" matches only the root path; a bare "GET /" would also catch every
 	// unmatched URL, which gorilla's exact-match router did not do.
-	mux.HandleFunc("GET /{$}", serveIndex)
+	mux.Handle("GET /{$}", web.IndexHandler(frontend))
 
 	srv := &http.Server{
 		Addr:              ":8080",
@@ -167,15 +173,21 @@ func main() {
 		IdleTimeout:       idleTimeout,
 	}
 
+	serverErr := make(chan error, 1)
 	go func() {
 		slog.Info("server starting", "addr", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("server failed", "error", err)
-			os.Exit(1)
+			serverErr <- err
 		}
 	}()
 
-	<-ctx.Done()
+	// Either a signal arrives or the listener fails outright; the second case must not
+	// leave the process sitting here forever waiting for a signal that will never come.
+	select {
+	case err := <-serverErr:
+		return fmt.Errorf("server failed: %w", err)
+	case <-ctx.Done():
+	}
 	stop() // restore default signal handling, so a second Ctrl-C kills immediately
 
 	slog.Info("shutting down")
@@ -183,12 +195,9 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("graceful shutdown failed", "error", err)
+		return fmt.Errorf("graceful shutdown failed: %w", err)
 	}
-}
-
-func serveIndex(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "../frontend/index.html")
+	return nil
 }
 
 // ConfigResponse is everything the frontend needs to boot: which airfields exist, which one

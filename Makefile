@@ -19,8 +19,16 @@ all: build run
 # have no Chart.js or DOM dependency; the glob is quoted so node expands it, not the shell.
 .PHONY: test
 test:
-	cd backend && gofmt -l . && go vet ./... && go test ./...
-	cd frontend && node --test 'js/*.test.js'
+	gofmt -l main.go internal/server internal/web
+	go vet ./...
+	go test ./...
+	cd internal/web/frontend && node --test 'js/*.test.js'
+
+# Run locally with the frontend served from disk, so CSS and JS edits show up on reload
+# without rebuilding the binary. Without this the embedded copy is served.
+.PHONY: dev
+dev:
+	FLUGWETTER_DEV=1 go run .
 
 # Build the container image
 .PHONY: build
@@ -57,6 +65,7 @@ help:
 	@echo "Available targets:"
 	@echo "  all     - Build image and run container (default)"
 	@echo "  test    - Run the Go and frontend test suites"
+	@echo "  dev     - Run locally with the frontend served from disk"
 	@echo "  build   - Build container image"
 	@echo "  run     - Run container"
 	@echo "  push    - Push image to registry"

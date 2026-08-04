@@ -1,52 +1,38 @@
 # Multi-stage build for smaller final image
 FROM golang:1.24-alpine AS builder
 
-# Set working directory
-WORKDIR /app
+WORKDIR /src
 
-# Install git (needed for some Go modules)
-#RUN apk add --no-cache git
-
-# Copy go mod files
-COPY backend/go.mod backend/go.sum ./
-
-# Download dependencies
+# Dependencies first, so a source-only change reuses this layer. The module has no
+# requirements at all, but keeping the step means adding one later does not silently
+# invalidate the whole build cache.
+COPY go.mod ./
 RUN go mod download
 
-# Copy backend source code
-COPY backend/ .
+# The frontend is compiled into the binary by go:embed, so it has to be present at build
+# time -- this is not just a runtime asset copy.
+COPY . .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-extldflags "-static"' -o flugwetter .
+RUN CGO_ENABLED=0 GOOS=linux go build -o /flugwetter .
 
 # Final stage - minimal runtime image
 FROM alpine:latest
 
-# Install ca-certificates for HTTPS requests to APIs
+# ca-certificates for HTTPS to Open-Meteo, sunrise-sunset.org and openAIP; tzdata because
+# the forecast is processed against real dates.
 RUN apk --no-cache add ca-certificates tzdata
 
-# Create non-root user for security
 RUN addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup
 
-# Set working directory
 WORKDIR /app
 
-# Copy the binary from builder stage
-COPY --from=builder /app/flugwetter ./backend/
+# One artifact: the frontend is inside the binary, so there is nothing else to copy and no
+# working directory the program has to be started from.
+COPY --from=builder --chown=appuser:appgroup /flugwetter ./flugwetter
 
-# Copy frontend files
-COPY frontend/ ./frontend/
-
-# Change ownership to non-root user
-RUN chown -R appuser:appgroup /app
-
-# Switch to non-root user
 USER appuser
 
-# Expose port
 EXPOSE 8080
 
-# Run the application
-WORKDIR /app/backend
 CMD ["./flugwetter"]

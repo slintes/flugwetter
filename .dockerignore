@@ -34,8 +34,12 @@ pids
 node_modules/
 
 # Built binaries
-backend/flugwetter
-backend/*.exe
+/flugwetter
+*.exe
 
 # Test files
 *_test.go
+
+# Local editor history (17MB) and the verification harness: never part of a build.
+.history/
+verify-charts.py
