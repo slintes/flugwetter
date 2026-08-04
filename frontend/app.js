@@ -21,8 +21,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // load hangs off the config fetch rather than running beside it.
     initAirportPicker().then(loadWeatherData);
 
-    // Set up manual pan/zoom after charts are created
-    setTimeout(setupManualPanZoom, 1000);
+    // Set up manual pan/zoom. initializeCharts() above is synchronous, so the charts and
+    // their canvases already exist -- the previous 1s setTimeout only delayed the
+    // listeners, leaving pan and zoom dead for the first second after load.
+    setupManualPanZoom();
 });
 
 // ---------------------------------------------------------------------------
@@ -1692,26 +1694,32 @@ function updateStaleBanner(data) {
 
 function updateCharts(data) {
     updateStaleBanner(data);
+    lastLoadedAt = Date.now();
+
+    // Guarded like wind_data and vfr_data below. Unguarded, a payload missing this one
+    // series threw here and aborted updateCharts before any of the other three charts were
+    // touched, so a partial response blanked everything rather than degrading.
+    const temperatureData = data.temperature_data || [];
 
     // Update temperature chart with time-based data
     // Convert UTC time strings to local timezone Date objects
-    const tempData = data.temperature_data.map(point => ({
+    const tempData = temperatureData.map(point => ({
         x: new Date(point.time + 'Z').getTime(), // Add 'Z' to indicate UTC
         y: point.temperature
     }));
     
-    const dewPointData = data.temperature_data.map(point => ({
+    const dewPointData = temperatureData.map(point => ({
         x: new Date(point.time + 'Z').getTime(), // Add 'Z' to indicate UTC
         y: point.dew_point
     }));
     
-    const precipitationData = data.temperature_data.map(point => ({
+    const precipitationData = temperatureData.map(point => ({
         x: new Date(point.time + 'Z').getTime(), // Add 'Z' to indicate UTC
         y: point.precipitation,
         precipitationProbability: point.precipitation_probability // Include probability for scriptable functions
     }));
     
-    const precipitationProbabilityData = data.temperature_data.map(point => ({
+    const precipitationProbabilityData = temperatureData.map(point => ({
         x: new Date(point.time + 'Z').getTime(), // Add 'Z' to indicate UTC
         y: point.precipitation_probability
     }));
@@ -1850,13 +1858,29 @@ function updateCharts(data) {
     }
 }
 
-// Function to refresh data
+// Auto-refresh. The interval matches the backend's cache TTL, so a refresh lands roughly
+// when new data becomes available.
+const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+
+// When the data on screen was last replaced. Used to decide whether a tab coming back to
+// the foreground is looking at something stale.
+let lastLoadedAt = Date.now();
+
 function refreshData() {
     loadWeatherData();
 }
 
-// Auto-refresh every 15 minutes (900000 ms)
-setInterval(refreshData, 900000);
+setInterval(refreshData, REFRESH_INTERVAL_MS);
+
+// A background tab's timers are throttled and a sleeping phone's do not run at all, so the
+// interval alone can leave a forecast hours old on screen the moment the tab is looked at
+// again -- which for this app is exactly when it is about to be trusted. Refresh on the way
+// back in if what is displayed has aged past the TTL.
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && Date.now() - lastLoadedAt >= REFRESH_INTERVAL_MS) {
+        refreshData();
+    }
+});
 
 // Function to reset zoom on all charts
 function resetZoom(hours) {
