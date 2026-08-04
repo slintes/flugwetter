@@ -39,7 +39,11 @@ header {
     color: #f1f5f9;
 }
 
-header h2 {
+header h1 {
+    /* The page title is an h1 for the heading tree's sake, but it is still the size an h2
+       renders at by default (1.5em) -- the visual weight was right and this must not grow
+       just because the tag changed. */
+    font-size: 1.5rem;
     font-weight: 650;
     letter-spacing: -0.01em;
 }
@@ -48,17 +52,6 @@ header h2 {
     height: 1.2em;
     vertical-align: middle;
     margin-right: 0.3em;
-}
-
-header h1 {
-    font-size: 3rem;
-    margin-bottom: 10px;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-}
-
-header p {
-    font-size: 1.2rem;
-    opacity: 0.9;
 }
 
 .airport-picker {
@@ -258,7 +251,7 @@ main {
     transform: translateY(-5px);
 }
 
-.chart-container h2 {
+.chart-container h3 {
     color: #2d3436;
     margin-bottom: 5px;
     font-size: 1.2rem;
@@ -458,10 +451,6 @@ canvas {
 
     header {
         margin-bottom: 15px;
-    }
-
-    header h1 {
-        font-size: 2rem;
     }
 
     .airport-picker {
