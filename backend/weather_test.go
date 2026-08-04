@@ -286,6 +286,49 @@ func TestProcessWeatherData_SeriesStayAligned(t *testing.T) {
 	}
 }
 
+// stubFetchWeather replaces the upstream weather call for the duration of the test and
+// resets the cache, which is package-level state shared between tests.
+func stubFetchWeather(t *testing.T, fn func(context.Context, Airport) (*ProcessedWeatherData, error)) {
+	t.Helper()
+
+	original := fetchWeatherFn
+	fetchWeatherFn = fn
+	t.Cleanup(func() {
+		fetchWeatherFn = original
+		cache.mutex.Lock()
+		cache.entries = make(map[string]*cacheEntry)
+		cache.mutex.Unlock()
+	})
+
+	cache.mutex.Lock()
+	cache.entries = make(map[string]*cacheEntry)
+	cache.mutex.Unlock()
+}
+
+// The fetch runs with no lock held, so a slower one can return after a fresher entry has
+// already been stored. It must not clobber it.
+func TestFetchAndCacheWeatherData_KeepsFresherEntry(t *testing.T) {
+	fresh := &ProcessedWeatherData{}
+
+	stubFetchWeather(t, func(context.Context, Airport) (*ProcessedWeatherData, error) {
+		// Simulates a fetch that started earlier and finished later: while it was in
+		// flight, another goroutine stored a newer entry.
+		cache.mutex.Lock()
+		cache.entries[testAirport.Identifier] = &cacheEntry{data: fresh, timestamp: time.Now()}
+		cache.mutex.Unlock()
+
+		return &ProcessedWeatherData{}, nil
+	})
+
+	got, err := fetchAndCacheWeatherData(context.Background(), testAirport)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != fresh {
+		t.Error("the stale in-flight result overwrote a fresher cache entry")
+	}
+}
+
 // A client that goes away must cancel the upstream call rather than leave it running.
 func TestGetJSONHonoursContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

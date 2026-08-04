@@ -160,28 +160,57 @@ func buildAPIURL(airport Airport) string {
 // otherwise fetches new data.
 func GetWeatherData(ctx context.Context, airport Airport) (*ProcessedWeatherData, error) {
 	cache.mutex.RLock()
-	if entry, ok := cache.entries[airport.Identifier]; ok && time.Since(entry.timestamp) < cacheDuration {
-		defer cache.mutex.RUnlock()
+	entry, ok := cache.entries[airport.Identifier]
+	cache.mutex.RUnlock()
+
+	if ok && time.Since(entry.timestamp) < cacheDuration {
 		return entry.data, nil
 	}
-	cache.mutex.RUnlock()
 
 	// Fetch new data
 	return fetchAndCacheWeatherData(ctx, airport)
 }
 
-// fetchAndCacheWeatherData fetches fresh data from the API and caches it
+// fetchAndCacheWeatherData fetches fresh data from the API and caches it.
+//
+// The upstream call deliberately runs with no lock held. Holding the cache mutex across it
+// blocked every other airport -- including warm cache hits that needed no network at all --
+// behind one slow Open-Meteo request. The tradeoff is that two simultaneous requests for the
+// same cold airport may both fetch; the double-check below makes the loser discard its
+// result rather than overwrite a fresher entry.
 func fetchAndCacheWeatherData(ctx context.Context, airport Airport) (*ProcessedWeatherData, error) {
+	fmt.Printf("Fetching fresh weather data from API for %s...\n", airport.Identifier)
+
+	startedAt := time.Now()
+	processedData, err := fetchWeatherFn(ctx, airport)
+	if err != nil {
+		return nil, err
+	}
+
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
-	// Double-check if another goroutine already updated the cache
-	if entry, ok := cache.entries[airport.Identifier]; ok && time.Since(entry.timestamp) < cacheDuration {
+	// Another goroutine may have stored a fresher entry while this fetch was in flight.
+	if entry, ok := cache.entries[airport.Identifier]; ok && entry.timestamp.After(startedAt) {
 		return entry.data, nil
 	}
 
-	fmt.Printf("Fetching fresh weather data from API for %s...\n", airport.Identifier)
+	cache.entries[airport.Identifier] = &cacheEntry{
+		data:      processedData,
+		timestamp: time.Now(),
+	}
 
+	fmt.Printf("Successfully cached weather data for %s with %d data points\n", airport.Identifier, len(processedData.TemperatureData))
+
+	return processedData, nil
+}
+
+// fetchWeatherFn indirects fetchWeather so tests can stub the network call, as
+// getDayLightFn does for the sunrise API.
+var fetchWeatherFn = fetchWeather
+
+// fetchWeather retrieves and processes one airport's forecast without touching the cache.
+func fetchWeather(ctx context.Context, airport Airport) (*ProcessedWeatherData, error) {
 	body, err := getJSON(ctx, buildAPIURL(airport))
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch weather data: %w", err)
@@ -192,17 +221,7 @@ func fetchAndCacheWeatherData(ctx context.Context, airport Airport) (*ProcessedW
 		return nil, fmt.Errorf("failed to parse API response: %w", err)
 	}
 
-	processedData := processWeatherData(ctx, &apiResponse, airport)
-
-	// Update cache
-	cache.entries[airport.Identifier] = &cacheEntry{
-		data:      processedData,
-		timestamp: time.Now(),
-	}
-
-	fmt.Printf("Successfully cached weather data for %s with %d data points\n", airport.Identifier, len(processedData.TemperatureData))
-
-	return processedData, nil
+	return processWeatherData(ctx, &apiResponse, airport), nil
 }
 
 // processWeatherData converts API response to frontend-friendly format
