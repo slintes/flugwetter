@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -445,6 +447,130 @@ func TestGetJSONHonoursContext(t *testing.T) {
 	// Never dialled: Do checks the context first, which is exactly what is asserted here.
 	if _, err := getJSON(ctx, "http://127.0.0.1:1/unreachable"); !errors.Is(err, context.Canceled) {
 		t.Errorf("error = %v, want context.Canceled", err)
+	}
+}
+
+func TestGetJSON(t *testing.T) {
+	t.Run("returns the body on 200", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}))
+		t.Cleanup(srv.Close)
+
+		body, err := getJSON(context.Background(), srv.URL)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if string(body) != `{"ok":true}` {
+			t.Errorf("body = %q, want {\"ok\":true}", body)
+		}
+	})
+
+	// Upstream returning 500 with an HTML error page must not be handed to the JSON
+	// decoder, where it would surface as a confusing parse error instead of the status.
+	t.Run("rejects a non-200 status", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "upstream exploded", http.StatusInternalServerError)
+		}))
+		t.Cleanup(srv.Close)
+
+		if _, err := getJSON(context.Background(), srv.URL); err == nil {
+			t.Error("got no error, want one for a 500 response")
+		} else if !strings.Contains(err.Error(), "500") {
+			t.Errorf("error = %v, want it to name the status code", err)
+		}
+	})
+
+	t.Run("times out rather than hanging", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			<-r.Context().Done() // never responds
+		}))
+		t.Cleanup(srv.Close)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+
+		if _, err := getJSON(ctx, srv.URL); err == nil {
+			t.Error("got no error, want a deadline exceeded")
+		}
+	})
+}
+
+// The layer builders index into ~19 parallel slices per hour. The bounds guards are what
+// stop a short or absent slice from panicking, and they are easy to break.
+func TestProcessLayers_ToleratesShortSlices(t *testing.T) {
+	// One time step, but every level's data is missing entirely.
+	response := &WeatherAPIResponse{}
+	response.Hourly.Time = []string{"2026-08-03T10:00"}
+
+	t.Run("cloud layers", func(t *testing.T) {
+		layers := processCloudLayers(response, 0)
+		if layers == nil {
+			t.Error("got nil, want an empty slice so it marshals as [] rather than null")
+		}
+		if len(layers) != 0 {
+			t.Errorf("len = %d, want 0 when no level has data", len(layers))
+		}
+	})
+
+	t.Run("wind layers", func(t *testing.T) {
+		layers := processWindLayers(response, 0)
+		if layers == nil {
+			t.Error("got nil, want an empty slice so it marshals as [] rather than null")
+		}
+		if len(layers) != 0 {
+			t.Errorf("len = %d, want 0 when no level has data", len(layers))
+		}
+	})
+
+	// An index past the end of every slice must also be safe: the hourly arrays are not
+	// guaranteed to be the same length as Time.
+	t.Run("index past the end", func(t *testing.T) {
+		if got := processCloudLayers(response, 99); len(got) != 0 {
+			t.Errorf("cloud layers = %d, want 0", len(got))
+		}
+		if got := processWindLayers(response, 99); len(got) != 0 {
+			t.Errorf("wind layers = %d, want 0", len(got))
+		}
+	})
+}
+
+func TestProcessWindLayers_FiltersAndHeights(t *testing.T) {
+	response := &WeatherAPIResponse{}
+	response.Hourly.Time = []string{"2026-08-03T10:00"}
+	// 10m and 80m carry no geopotential height and fall back to fixed altitudes.
+	response.Hourly.WindSpeed10m = []float64{12}
+	response.Hourly.WindDirection10m = []int{270}
+	response.Hourly.WindSpeed80m = []float64{0} // calm: dropped by the speed > 0 filter
+	response.Hourly.WindDirection80m = []int{270}
+	// 975hPa well inside range, 600hPa deliberately above the 12000ft ceiling.
+	response.Hourly.WindSpeed975hPa = []float64{20}
+	response.Hourly.WindDirection975hPa = []int{300}
+	response.Hourly.GeopotentialHeight975hPa = []float64{300}
+	response.Hourly.WindSpeed600hPa = []float64{40}
+	response.Hourly.WindDirection600hPa = []int{310}
+	response.Hourly.GeopotentialHeight600hPa = []float64{4400} // ~14435 ft
+
+	layers := processWindLayers(response, 0)
+
+	if len(layers) != 2 {
+		t.Fatalf("len(layers) = %d, want 2 (calm 80m dropped, 600hPa above the ceiling)", len(layers))
+	}
+	// 10m falls back to 10 metres -> 32 ft.
+	if layers[0].HeightFeet != 32 {
+		t.Errorf("10m HeightFeet = %d, want 32", layers[0].HeightFeet)
+	}
+	if layers[0].Speed != 12 {
+		t.Errorf("10m Speed = %v, want 12", layers[0].Speed)
+	}
+	// 300 m -> 984 ft.
+	if layers[1].HeightFeet != 984 {
+		t.Errorf("975hPa HeightFeet = %d, want 984", layers[1].HeightFeet)
+	}
+	for _, layer := range layers {
+		if layer.HeightFeet > 12000 {
+			t.Errorf("HeightFeet = %d, want everything above 12000 ft dropped", layer.HeightFeet)
+		}
 	}
 }
 
