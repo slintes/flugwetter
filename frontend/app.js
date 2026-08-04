@@ -491,6 +491,13 @@ function initializeCharts() {
             // previous 'YYYY-MM-DDTHH:mm' was a moment.js pattern, and under the
             // date-fns adapter YYYY/DD mean week-numbering year and day-of-year, which
             // that library throws on. `distribution` was a Chart.js v2 option.
+            //
+            // Must be spelled out: the temperature chart's precipitation bars pull in
+            // Chart.js's bar controller defaults, which set `offset: true` on the index
+            // scale. That makes the time scale reserve half a slot at each end, so the
+            // same timestamp lands ~26px further right and 5% closer together than on the
+            // three charts without bars — the four time axes drift apart.
+            offset: false,
             time: {
                 unit: 'hour',
                 stepSize: 1,
