@@ -12,8 +12,9 @@ const AIRPORT_STORAGE_KEY = 'flugwetter.airport';
 // Initialize charts when page loads
 document.addEventListener('DOMContentLoaded', function() {
     initializeCharts();
-    const isMobile = window.matchMedia('(pointer: coarse)').matches;
-    resetZoom(isMobile ? 6 : 72)
+
+    // The zoom is set once the data is in, by updateCharts -- see initialZoomHours(),
+    // which needs the actual labels and the laid-out plot width to choose it.
 
     // The airport list has to arrive before the first weather request, so the initial
     // load hangs off the config fetch rather than running beside it.
@@ -300,10 +301,114 @@ function fitMapToAirports() {
 // to a constant is what keeps them aligned; the values are the widest the axes naturally
 // wanted, so no label is clipped. A new chart must use the same two constants, and the
 // VFR chart, which has no visible axis at all, pads by them instead.
-const Y_AXIS_WIDTH_LEFT = 82;
-const Y_AXIS_WIDTH_RIGHT = 81;
+const AXIS_WIDTHS_WIDE = { left: 82, right: 81 };
+// On a phone 82+81 is 163px of a 360px screen — 44% of it, taken from every chart. These
+// clear the widest tick label ("10000ft", "30 mm") but not the rotated axis title as well,
+// which is why the titles are hidden at this size (see the responsiveAxes plugin).
+const AXIS_WIDTHS_NARROW = { left: 54, right: 52 };
 
-const pinAxisWidth = width => scale => { scale.width = width; };
+// Phones report 360-430 CSS px in portrait, so 600 puts the switch clear of that band.
+const NARROW_VIEWPORT = 600;
+
+function isNarrowViewport() {
+    return window.innerWidth <= NARROW_VIEWPORT;
+}
+
+function axisWidths() {
+    return isNarrowViewport() ? AXIS_WIDTHS_NARROW : AXIS_WIDTHS_WIDE;
+}
+
+// afterFit runs on every layout, so crossing the breakpoint re-pins all four charts with
+// no resize handler of our own. Both sides must come from the same source or the charts
+// drift apart again.
+const pinAxisWidth = side => scale => { scale.width = axisWidths()[side]; };
+
+// The VFR chart's weather icons and probability labels, which are drawn by the vfrText
+// plugin rather than by Chart.js. At full size one hour needs 56px, and a phone's plot
+// area cannot give that to even one hour, so they shrink with the axes.
+const VFR_METRICS_WIDE = { icon: 36, font: '24px Narrow', unknownFont: '20px Narrow' };
+const VFR_METRICS_NARROW = { icon: 20, font: '14px Narrow', unknownFont: '12px Narrow' };
+
+function vfrMetrics() {
+    return isNarrowViewport() ? VFR_METRICS_NARROW : VFR_METRICS_WIDE;
+}
+
+// responsiveAxes runs before every layout, which is what makes a resize across the
+// breakpoint take effect without a resize handler of our own.
+//
+// Two jobs: reserve the axis space on the VFR chart, which has no visible axis of its own
+// and would otherwise run wider than the other three; and drop the rotated axis titles on
+// a phone, because "Height (feet) - Log Scale" plus a "10000ft" tick does not fit in 54px
+// and the tick labels are the half that cannot be inferred from the chart heading.
+Chart.register({
+    id: 'responsiveAxes',
+    beforeLayout: function(chart) {
+        const widths = axisWidths();
+
+        if (chart.canvas.id === 'vfrChart') {
+            chart.options.layout.padding.left = widths.left;
+            chart.options.layout.padding.right = widths.right;
+            return;
+        }
+
+        const showTitles = !isNarrowViewport();
+        Object.entries(chart.options.scales || {}).forEach(([id, scale]) => {
+            if (id !== 'x' && scale.title) {
+                scale.title.display = showTitles;
+            }
+        });
+    }
+});
+
+// Initial zoom. A fixed 72h looked fine on a wide monitor and jammed the VFR chart's
+// weather icons and probability labels into each other on anything narrower, so the range
+// is derived from how much room one hour actually gets. Applied once, on first load; after
+// that the range belongs to the user and is left alone across airport switches and the
+// 15-minute refresh.
+const VFR_SLOT_GAP = 4;      // so neighbours are visibly apart, not merely touching
+// 3 rather than 6: on a phone the plot cannot fit 6 hours without the icons colliding, and
+// a readable 3-hour view that pans beats an unreadable 6-hour one.
+const INITIAL_ZOOM_MIN_HOURS = 3;
+const INITIAL_ZOOM_MAX_HOURS = 72;
+
+let initialZoomApplied = false;
+
+// vfrSlotWidth returns the horizontal room one hour needs before the icon or the label
+// starts touching its neighbour. The labels are measured rather than assumed, because
+// their width swings a lot: "0" against "100?".
+function vfrSlotWidth() {
+    const metrics = vfrMetrics();
+    const ctx = vfrChart.ctx;
+    ctx.save();
+    ctx.font = metrics.font;
+    let widestLabel = 0;
+    (vfrChart.data.datasets[0].data || []).forEach(point => {
+        let label;
+        if (point.probability < 0) {
+            label = '–';
+        } else if (point.visibilityKnown === false) {
+            label = `${point.probability}?`;
+        } else {
+            label = `${point.probability}`;
+        }
+        widestLabel = Math.max(widestLabel, ctx.measureText(label).width);
+    });
+    ctx.restore();
+    return Math.max(metrics.icon, widestLabel) + VFR_SLOT_GAP;
+}
+
+function initialZoomHours() {
+    const area = vfrChart.chartArea;
+    const widths = axisWidths();
+    const plotWidth = area && area.right > area.left
+        ? area.right - area.left
+        : vfrChart.canvas.clientWidth - widths.left - widths.right;
+
+    // resetChartZoom puts 3 hours of history on screen on top of the range asked for, so
+    // those slots have to come out of the budget.
+    const hours = Math.floor(plotWidth / vfrSlotWidth()) - 3;
+    return Math.min(INITIAL_ZOOM_MAX_HOURS, Math.max(INITIAL_ZOOM_MIN_HOURS, hours));
+}
 
 function initializeCharts() {
     // VFR Chart
@@ -482,6 +587,7 @@ function initializeCharts() {
         id: 'vfrText',
         afterDatasetsDraw: function(chart) {
             if (chart.canvas.id === 'vfrChart') {
+                const metrics = vfrMetrics();
                 const ctx = chart.ctx;
                 const chartArea = chart.chartArea;
                 
@@ -535,7 +641,7 @@ function initializeCharts() {
                                 }
 
                                 // Set text properties
-                                ctx.font = '24px Narrow';
+                                ctx.font = metrics.font;
                                 ctx.textAlign = 'center';
                                 ctx.textBaseline = 'middle';
 
@@ -546,8 +652,8 @@ function initializeCharts() {
                                 if (point.weatherCode !== undefined) {
                                     const weatherCode = point.weatherCode;
                                     const iconFilename = weatherCodeToIcon[weatherCode];
-                                    const maxIconSize = 36;
-                                    const iconY = yPos - 36; // Position above the text
+                                    const maxIconSize = metrics.icon;
+                                    const iconY = yPos - metrics.icon; // Position above the text
 
                                     function drawIcon(img, x, y) {
                                         // Icons carry only a viewBox and are not square
@@ -565,7 +671,7 @@ function initializeCharts() {
                                         // Unknown code. Draw a glyph rather than pointing
                                         // at a placeholder file that does not exist.
                                         ctx.fillStyle = '#999';
-                                        ctx.font = '20px Narrow';
+                                        ctx.font = metrics.unknownFont;
                                         ctx.fillText('?', xPos, iconY);
                                     } else {
                                         let img = weatherIconCache[iconFilename];
@@ -626,7 +732,9 @@ function initializeCharts() {
             // come from padding instead, or this chart's time axis would run wider than
             // theirs.
             layout: {
-                padding: { left: Y_AXIS_WIDTH_LEFT, right: Y_AXIS_WIDTH_RIGHT }
+                // Kept in step with the other charts' axes by the vfrAxisPadding plugin,
+                // which rewrites these before every layout.
+                padding: { left: AXIS_WIDTHS_WIDE.left, right: AXIS_WIDTHS_WIDE.right }
             },
             scales: {
                 y: {
@@ -723,7 +831,7 @@ function initializeCharts() {
                     display: true,
                     position: 'left',
                     beginAtZero: false,
-                    afterFit: pinAxisWidth(Y_AXIS_WIDTH_LEFT),
+                    afterFit: pinAxisWidth('left'),
                     grid: {
                         color: 'rgba(0,0,0,0.1)'
                     },
@@ -740,7 +848,7 @@ function initializeCharts() {
                     beginAtZero: true,
                     min: 0.09,
                     max: 30,
-                    afterFit: pinAxisWidth(Y_AXIS_WIDTH_RIGHT),
+                    afterFit: pinAxisWidth('right'),
                     grid: {
                         drawOnChartArea: false,
                     },
@@ -1033,7 +1141,7 @@ function initializeCharts() {
                     position: 'left',
                     min: 200, // low-level clouds
                     max: 12000, // Max altitude
-                    afterFit: pinAxisWidth(Y_AXIS_WIDTH_LEFT),
+                    afterFit: pinAxisWidth('left'),
                     grid: {
                         color: 'rgba(0,0,0,0.1)'
                     },
@@ -1054,7 +1162,7 @@ function initializeCharts() {
                     position: 'right',
                     min: 0,
                     max: 80, // Maximum visibility
-                    afterFit: pinAxisWidth(Y_AXIS_WIDTH_RIGHT),
+                    afterFit: pinAxisWidth('right'),
                     grid: {
                         drawOnChartArea: false, // Don't draw grid lines for second axis
                     },
@@ -1348,7 +1456,7 @@ function initializeCharts() {
                     position: 'left',
                     min: 20,
                     max: 10000, // Max altitude in ft
-                    afterFit: pinAxisWidth(Y_AXIS_WIDTH_LEFT),
+                    afterFit: pinAxisWidth('left'),
                     grid: {
                         color: 'rgba(0,0,0,0.1)'
                     },
@@ -1367,7 +1475,7 @@ function initializeCharts() {
                     type: 'linear',
                     position: 'right',
                     min: 0,
-                    afterFit: pinAxisWidth(Y_AXIS_WIDTH_RIGHT),
+                    afterFit: pinAxisWidth('right'),
                     grid: {
                         drawOnChartArea: false, // Don't draw grid lines for second axis
                     },
@@ -1604,6 +1712,12 @@ function updateCharts(data) {
     }
     vfrChart.data.datasets[0].data = vfrData;
     vfrChart.update();
+
+    // Only now are the labels and the laid-out plot width both known.
+    if (!initialZoomApplied) {
+        initialZoomApplied = true;
+        resetZoom(initialZoomHours());
+    }
 }
 
 // Function to refresh data
