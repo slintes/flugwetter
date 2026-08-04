@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -106,17 +109,36 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// Server timeouts. The zero-value http.Server has none, which is gosec G114: a client can
+// hold a connection open indefinitely without ever completing a request. nginx in front
+// mitigates it in the current deployment, but the app should not depend on that.
+const (
+	readHeaderTimeout = 5 * time.Second
+	readTimeout       = 15 * time.Second
+	// Generous relative to the others: a cold airport waits on Open-Meteo, which the shared
+	// client caps at 10s, and the response still has to be written after that.
+	writeTimeout = 30 * time.Second
+	idleTimeout  = 60 * time.Second
+	// How long in-flight requests get to finish once a shutdown signal arrives.
+	shutdownGrace = 10 * time.Second
+)
+
 func main() {
 	// A broken airport list is fatal: an empty one renders as a working UI with no data.
 	if err := loadAirports(); err != nil {
 		log.Fatalf("Failed to load airports: %v", err)
 	}
 
+	// Signal-driven shutdown, so `make restart` drains in-flight requests rather than
+	// cutting them mid-response.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	r := mux.NewRouter()
 
 	// pre cache weather data for the default airport only. Warming all of them would fire
 	// one very large Open-Meteo request per airfield before the first user arrives.
-	_, _ = GetWeatherData(context.Background(), defaultAirport)
+	_, _ = GetWeatherData(ctx, defaultAirport)
 
 	// Add logging middleware to log all requests
 	r.Use(loggingMiddleware)
@@ -135,8 +157,32 @@ func main() {
 	}
 	r.HandleFunc("/", serveIndex).Methods("GET")
 
-	fmt.Println("Server starting on :8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	srv := &http.Server{
+		Addr:              ":8080",
+		Handler:           r,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
+	}
+
+	go func() {
+		fmt.Println("Server starting on :8080")
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("Server failed: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	stop() // restore default signal handling, so a second Ctrl-C kills immediately
+
+	log.Println("Shutting down...")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Graceful shutdown failed: %v", err)
+	}
 }
 
 func serveIndex(w http.ResponseWriter, r *http.Request) {
