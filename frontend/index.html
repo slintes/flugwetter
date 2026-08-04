@@ -27,19 +27,19 @@
         <main>
             <div class="chart-instructions">
                 <span class="desktop-hint">Ctrl + scroll to zoom, drag to pan</span><span class="mobile-hint">Swipe to pan, pinch to zoom</span>
-                <button onclick="resetZoom(6)">6h</button>
-                <button onclick="resetZoom(12)">12h</button>
-                <button onclick="resetZoom(24)">24h</button>
-                <button onclick="resetZoom(48)">48h</button>
-                <button onclick="resetZoom(72)">72h</button>
-                <button onclick="resetZoom(undefined)">All</button>
+                <button type="button" data-hours="6">6h</button>
+                <button type="button" data-hours="12">12h</button>
+                <button type="button" data-hours="24">24h</button>
+                <button type="button" data-hours="48">48h</button>
+                <button type="button" data-hours="72">72h</button>
+                <button type="button" data-hours="all">All</button>
             </div>
 
             <!-- Above the charts on purpose: below them it sat off-screen, so a failed load
                  looked like nothing had happened. -->
             <div class="error" id="error" role="alert" style="display: none;">
                 <p>Failed to load weather data. Please try again later.</p>
-                <button onclick="loadWeatherData()">Retry</button>
+                <button type="button" id="retryButton">Retry</button>
             </div>
 
             <!-- Shown when the backend served an expired cache entry because Open-Meteo was
@@ -96,7 +96,8 @@
         </div>
     </div>
 
-    <script src="static/weather-icons.js"></script>
-    <script src="static/app.js"></script>
+    <!-- Native ES modules: no bundler, no build step. Modules defer by default, so this
+         still runs after the document is parsed. -->
+    <script type="module" src="static/js/main.js"></script>
 </body>
 </html> 

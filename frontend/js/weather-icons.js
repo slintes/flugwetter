@@ -1,7 +1,7 @@
 // Mapping from WMO weather codes to icon filenames
 // Icons: Visual Crossing WeatherIcons, 2nd Set - Color (GNU LGPL)
 // https://github.com/visualcrossing/WeatherIcons
-const weatherCodeToIcon = {
+export const weatherCodeToIcon = {
     "0": "clear-day.svg",                      // Clear sky
     "1": "partly-cloudy-day.svg",              // Mainly clear
     "2": "partly-cloudy-day.svg",              // Partly cloudy
