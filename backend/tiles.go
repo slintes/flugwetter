@@ -112,7 +112,14 @@ func serveOpenAIPTile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	url := fmt.Sprintf(openAIPTileURL, z, x, y, openAIPAPIKey())
-	resp, err := http.Get(url)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil)
+	if err != nil {
+		log.Printf("failed to build openAIP tile request %s: %v", key, err)
+		http.Error(w, "Failed to fetch tile", http.StatusBadGateway)
+		return
+	}
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		log.Printf("failed to fetch openAIP tile %s: %v", key, err)
 		http.Error(w, "Failed to fetch tile", http.StatusBadGateway)

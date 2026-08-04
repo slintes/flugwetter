@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,36 @@ import (
 	"sync"
 	"time"
 )
+
+// httpClient is shared by every upstream call. http.DefaultClient has no timeout at any
+// layer, so a hung connection to Open-Meteo or sunrise-sunset.org blocked its goroutine
+// forever. The timeout covers the whole request including the body read.
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
+// getJSON performs a GET and returns the body, honouring ctx so a client that goes away
+// cancels the upstream call instead of leaving it running to completion.
+func getJSON(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build request: %w", err)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API returned status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	return body, nil
+}
 
 // WeatherAPIResponse represents the complete API response from open-meteo
 type WeatherAPIResponse struct {
@@ -127,7 +158,7 @@ func buildAPIURL(airport Airport) string {
 
 // GetWeatherData returns cached data for the given airport if available and fresh,
 // otherwise fetches new data.
-func GetWeatherData(airport Airport) (*ProcessedWeatherData, error) {
+func GetWeatherData(ctx context.Context, airport Airport) (*ProcessedWeatherData, error) {
 	cache.mutex.RLock()
 	if entry, ok := cache.entries[airport.Identifier]; ok && time.Since(entry.timestamp) < cacheDuration {
 		defer cache.mutex.RUnlock()
@@ -136,11 +167,11 @@ func GetWeatherData(airport Airport) (*ProcessedWeatherData, error) {
 	cache.mutex.RUnlock()
 
 	// Fetch new data
-	return fetchAndCacheWeatherData(airport)
+	return fetchAndCacheWeatherData(ctx, airport)
 }
 
 // fetchAndCacheWeatherData fetches fresh data from the API and caches it
-func fetchAndCacheWeatherData(airport Airport) (*ProcessedWeatherData, error) {
+func fetchAndCacheWeatherData(ctx context.Context, airport Airport) (*ProcessedWeatherData, error) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
@@ -151,19 +182,9 @@ func fetchAndCacheWeatherData(airport Airport) (*ProcessedWeatherData, error) {
 
 	fmt.Printf("Fetching fresh weather data from API for %s...\n", airport.Identifier)
 
-	resp, err := http.Get(buildAPIURL(airport))
+	body, err := getJSON(ctx, buildAPIURL(airport))
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch weather data: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API returned status code: %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	var apiResponse WeatherAPIResponse
@@ -171,7 +192,7 @@ func fetchAndCacheWeatherData(airport Airport) (*ProcessedWeatherData, error) {
 		return nil, fmt.Errorf("failed to parse API response: %w", err)
 	}
 
-	processedData := processWeatherData(&apiResponse, airport)
+	processedData := processWeatherData(ctx, &apiResponse, airport)
 
 	// Update cache
 	cache.entries[airport.Identifier] = &cacheEntry{
@@ -185,7 +206,7 @@ func fetchAndCacheWeatherData(airport Airport) (*ProcessedWeatherData, error) {
 }
 
 // processWeatherData converts API response to frontend-friendly format
-func processWeatherData(apiResponse *WeatherAPIResponse, airport Airport) *ProcessedWeatherData {
+func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, airport Airport) *ProcessedWeatherData {
 	processed := &ProcessedWeatherData{
 		TemperatureData: make([]TemperaturePoint, 0),
 		CloudData:       make([]CloudPoint, 0),
@@ -260,7 +281,7 @@ func processWeatherData(apiResponse *WeatherAPIResponse, airport Airport) *Proce
 		})
 
 		// Calculate VFR probability
-		vfrProbability, visibilityKnown := calculateVFRProbability(airport, cloudBase, windSpeed10m, crosswind10m, crosswindGusts10m, visibility, tempPoint, timeStr)
+		vfrProbability, visibilityKnown := calculateVFRProbability(ctx, airport, cloudBase, windSpeed10m, crosswind10m, crosswindGusts10m, visibility, tempPoint, timeStr)
 
 		// Get weather code if available
 		processWeatherCode := ""
@@ -275,7 +296,7 @@ func processWeatherData(apiResponse *WeatherAPIResponse, airport Airport) *Proce
 				log.Printf("failed to parse time %q: %v", timeStr, err)
 			} else {
 				debug("time: %s", t)
-				dayLight, err := getDayLightFn(airport.LatString(), airport.LonString(), t)
+				dayLight, err := getDayLightFn(ctx, airport.LatString(), airport.LonString(), t)
 				if err != nil {
 					log.Printf("failed to get daylight for %s: %v", timeStr, err)
 				} else if !(t.After(dayLight.Parsed.Sunrise) && t.Before(dayLight.Parsed.Sunset)) {
@@ -440,7 +461,7 @@ func getCloudBase(cloudLayers []CloudLayer) *int {
 // Open-Meteo drops visibility beyond the ICON-EU horizon, which is the tail of every
 // forecast. Those hours are still scored on the factors that are available; the caller
 // is expected to present them as estimates rather than as hard numbers.
-func calculateVFRProbability(airport Airport, cloudBase *int, windSpeed, crosswind, crosswindGusts float64, visibility *float64, tempPoint TemperaturePoint, timeStr string) (probability int, visibilityKnown bool) {
+func calculateVFRProbability(ctx context.Context, airport Airport, cloudBase *int, windSpeed, crosswind, crosswindGusts float64, visibility *float64, tempPoint TemperaturePoint, timeStr string) (probability int, visibilityKnown bool) {
 
 	debugProb := func(reason string, value string) {
 		debug("VFR probability modified, reason %s, value %s", reason, value)
@@ -458,7 +479,7 @@ func calculateVFRProbability(airport Airport, cloudBase *int, windSpeed, crosswi
 	visibilityKnown = visibility != nil
 
 	// check daylight
-	dayLight, err := getDayLightFn(airport.LatString(), airport.LonString(), t)
+	dayLight, err := getDayLightFn(ctx, airport.LatString(), airport.LonString(), t)
 	if err != nil {
 		log.Printf("failed to get daylight for %s: %v", t.Format(time.RFC3339), err)
 		return -1, false
@@ -651,7 +672,7 @@ var (
 // getDayLightFn indirects getDayLight so tests can stub the network call.
 var getDayLightFn = getDayLight
 
-func getDayLight(latitude, longitude string, t time.Time) (*SunriseSunsetResponse, error) {
+func getDayLight(ctx context.Context, latitude, longitude string, t time.Time) (*SunriseSunsetResponse, error) {
 
 	// Format date as YYYY-MM-DD
 	dateStr := t.Format("2006-01-02")
@@ -670,19 +691,9 @@ func getDayLight(latitude, longitude string, t time.Time) (*SunriseSunsetRespons
 	url := fmt.Sprintf("https://api.sunrise-sunset.org/json?lat=%s&lng=%s&date=%s&formatted=0",
 		latitude, longitude, dateStr)
 
-	resp, err := http.Get(url)
+	body, err := getJSON(ctx, url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch sunrise/sunset data: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API returned status code: %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	result, err := parseSunriseSunset(body, dateStr)

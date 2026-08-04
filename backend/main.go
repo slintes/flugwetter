@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -107,7 +108,7 @@ func main() {
 
 	// pre cache weather data for the default airport only. Warming all of them would fire
 	// one very large Open-Meteo request per airfield before the first user arrives.
-	_, _ = GetWeatherData(defaultAirport)
+	_, _ = GetWeatherData(context.Background(), defaultAirport)
 
 	// Add logging middleware to log all requests
 	r.Use(loggingMiddleware)
@@ -171,7 +172,7 @@ func getWeatherData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := GetWeatherData(airport)
+	data, err := GetWeatherData(r.Context(), airport)
 	if err != nil {
 		log.Printf("Error fetching weather data for %s: %v", airport.Identifier, err)
 		http.Error(w, "Failed to fetch weather data", http.StatusInternalServerError)

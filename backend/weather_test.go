@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -39,7 +40,7 @@ func stubDayLight(t *testing.T) {
 	resp.Parsed.CivilTwilightEnd = mustParse("2026-08-03T20:20:00Z")
 
 	original := getDayLightFn
-	getDayLightFn = func(latitude, longitude string, _ time.Time) (*SunriseSunsetResponse, error) {
+	getDayLightFn = func(_ context.Context, latitude, longitude string, _ time.Time) (*SunriseSunsetResponse, error) {
 		return resp, nil
 	}
 	t.Cleanup(func() { getDayLightFn = original })
@@ -60,7 +61,7 @@ func TestCalculateVFRProbability_UnknownVisibilityStillScores(t *testing.T) {
 	stubDayLight(t)
 	base, wind, xw, gusts, temp := calmCAVOK()
 
-	prob, known := calculateVFRProbability(testAirport, base, wind, xw, gusts, nil, temp, midday)
+	prob, known := calculateVFRProbability(context.Background(), testAirport, base, wind, xw, gusts, nil, temp, midday)
 
 	if known {
 		t.Errorf("visibilityKnown = true, want false when visibility is nil")
@@ -75,7 +76,7 @@ func TestCalculateVFRProbability_UnknownVisibilityStillScores(t *testing.T) {
 func TestCalculateVFRProbability_UnknownVisibilityKeepsOtherPenalties(t *testing.T) {
 	stubDayLight(t)
 	// Low ceiling at FL16 costs 25; nothing else applies.
-	prob, known := calculateVFRProbability(testAirport, ptrInt(16), 0, 0, 0, nil, TemperaturePoint{Temperature: 18}, midday)
+	prob, known := calculateVFRProbability(context.Background(), testAirport, ptrInt(16), 0, 0, 0, nil, TemperaturePoint{Temperature: 18}, midday)
 
 	if known {
 		t.Errorf("visibilityKnown = true, want false")
@@ -89,7 +90,7 @@ func TestCalculateVFRProbability_KnownVisibility(t *testing.T) {
 	stubDayLight(t)
 	base, wind, xw, gusts, temp := calmCAVOK()
 
-	prob, known := calculateVFRProbability(testAirport, base, wind, xw, gusts, ptrFloat(40), temp, midday)
+	prob, known := calculateVFRProbability(context.Background(), testAirport, base, wind, xw, gusts, ptrFloat(40), temp, midday)
 
 	if !known {
 		t.Errorf("visibilityKnown = false, want true when visibility is present")
@@ -116,7 +117,7 @@ func TestCalculateVFRProbability_HardNoGo(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			prob, _ := calculateVFRProbability(testAirport, tc.cloudBase, 0, 0, 0, tc.visibility, TemperaturePoint{Temperature: 18}, tc.timeStr)
+			prob, _ := calculateVFRProbability(context.Background(), testAirport, tc.cloudBase, 0, 0, 0, tc.visibility, TemperaturePoint{Temperature: 18}, tc.timeStr)
 			if prob != 0 {
 				t.Errorf("probability = %d, want 0", prob)
 			}
@@ -127,7 +128,7 @@ func TestCalculateVFRProbability_HardNoGo(t *testing.T) {
 func TestCalculateVFRProbability_UnparseableTime(t *testing.T) {
 	stubDayLight(t)
 
-	prob, known := calculateVFRProbability(testAirport, nil, 0, 0, 0, ptrFloat(40), TemperaturePoint{}, "not-a-time")
+	prob, known := calculateVFRProbability(context.Background(), testAirport, nil, 0, 0, 0, ptrFloat(40), TemperaturePoint{}, "not-a-time")
 
 	if prob != -1 {
 		t.Errorf("probability = %d, want -1 for an unscoreable hour", prob)
@@ -215,7 +216,7 @@ func TestProcessWeatherData_CalmHourKeepsWindRow(t *testing.T) {
 	stubDayLight(t)
 	times := []string{"2026-08-03T10:00", "2026-08-03T11:00", "2026-08-03T12:00"}
 
-	got := processWeatherData(hourlyFixture(times), testAirport)
+	got := processWeatherData(context.Background(), hourlyFixture(times), testAirport)
 
 	// The regression: `if len(windLayers) > 0` dropped the entire WindPoint when no
 	// level qualified, taking the 10m speed, gusts and both crosswind series with it
@@ -235,7 +236,7 @@ func TestProcessWeatherData_CalmHourKeepsWindRow(t *testing.T) {
 
 func TestProcessWeatherData_SurvivesDaylightLookupFailure(t *testing.T) {
 	original := getDayLightFn
-	getDayLightFn = func(latitude, longitude string, _ time.Time) (*SunriseSunsetResponse, error) {
+	getDayLightFn = func(_ context.Context, latitude, longitude string, _ time.Time) (*SunriseSunsetResponse, error) {
 		return nil, errors.New("sunrise API unavailable")
 	}
 	t.Cleanup(func() { getDayLightFn = original })
@@ -249,7 +250,7 @@ func TestProcessWeatherData_SurvivesDaylightLookupFailure(t *testing.T) {
 			t.Fatalf("processWeatherData panicked on a daylight lookup failure: %v", r)
 		}
 	}()
-	got := processWeatherData(hourlyFixture(times), testAirport)
+	got := processWeatherData(context.Background(), hourlyFixture(times), testAirport)
 
 	if len(got.VfrData) != len(times) {
 		t.Fatalf("len(VfrData) = %d, want %d", len(got.VfrData), len(times))
@@ -268,7 +269,7 @@ func TestProcessWeatherData_SeriesStayAligned(t *testing.T) {
 	stubDayLight(t)
 	times := []string{"2026-08-03T10:00", "2026-08-03T11:00", "2026-08-03T12:00"}
 
-	got := processWeatherData(hourlyFixture(times), testAirport)
+	got := processWeatherData(context.Background(), hourlyFixture(times), testAirport)
 
 	for _, tc := range []struct {
 		name string
@@ -282,6 +283,17 @@ func TestProcessWeatherData_SeriesStayAligned(t *testing.T) {
 		if tc.n != len(times) {
 			t.Errorf("len(%s) = %d, want %d", tc.name, tc.n, len(times))
 		}
+	}
+}
+
+// A client that goes away must cancel the upstream call rather than leave it running.
+func TestGetJSONHonoursContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// Never dialled: Do checks the context first, which is exactly what is asserted here.
+	if _, err := getJSON(ctx, "http://127.0.0.1:1/unreachable"); !errors.Is(err, context.Canceled) {
+		t.Errorf("error = %v, want context.Canceled", err)
 	}
 }
 
