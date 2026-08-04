@@ -15,6 +15,13 @@ RESTART_SCRIPT = restartFlugwetter.sh
 .PHONY: all
 all: build run
 
+# Run both test suites. The frontend tests are stdlib `node --test` over the modules that
+# have no Chart.js or DOM dependency; the glob is quoted so node expands it, not the shell.
+.PHONY: test
+test:
+	cd backend && gofmt -l . && go vet ./... && go test ./...
+	cd frontend && node --test 'js/*.test.js'
+
 # Build the container image
 .PHONY: build
 build:
@@ -49,6 +56,7 @@ deploy: build push restart
 help:
 	@echo "Available targets:"
 	@echo "  all     - Build image and run container (default)"
+	@echo "  test    - Run the Go and frontend test suites"
 	@echo "  build   - Build container image"
 	@echo "  run     - Run container"
 	@echo "  push    - Push image to registry"
