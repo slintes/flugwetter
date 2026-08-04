@@ -224,6 +224,49 @@ func fetchWeather(ctx context.Context, airport Airport) (*ProcessedWeatherData, 
 	return processWeatherData(ctx, &apiResponse, airport), nil
 }
 
+// hourTime parses one of Open-Meteo's naive-UTC hourly timestamps ("2026-08-03T12:00").
+func hourTime(timeStr string) (time.Time, error) {
+	return time.Parse(time.RFC3339, timeStr+":00Z")
+}
+
+// resolveDaylight looks up the daylight windows for every distinct date in the forecast,
+// keyed by "YYYY-MM-DD".
+//
+// This used to happen per hour, from two separate call sites -- the -night icon suffix and
+// calculateVFRProbability -- which is ~336 lookups for a 7-day forecast. Results were cached
+// by date so a healthy upstream only saw ~7 requests, but errors were never cached, so a
+// failing sunrise-sunset.org produced 336 serial requests instead. Resolving up front bounds
+// the failure path by the number of days rather than the length of the forecast.
+//
+// A date that could not be resolved is absent from the map. Callers treat that the same way
+// they treated a failed lookup before: the icon keeps its daytime variant and the hour scores
+// -1, rather than taking the process down with a nil dereference.
+func resolveDaylight(ctx context.Context, airport Airport, times []string) map[string]*SunriseSunsetResponse {
+	daylight := make(map[string]*SunriseSunsetResponse)
+
+	for _, timeStr := range times {
+		t, err := hourTime(timeStr)
+		if err != nil {
+			// Reported where the hour is scored; nothing to look up for it here.
+			continue
+		}
+
+		date := t.Format("2006-01-02")
+		if _, ok := daylight[date]; ok {
+			continue
+		}
+
+		dayLight, err := getDayLightFn(ctx, airport.LatString(), airport.LonString(), t)
+		if err != nil {
+			log.Printf("failed to get daylight for %s: %v", date, err)
+			continue
+		}
+		daylight[date] = dayLight
+	}
+
+	return daylight
+}
+
 // processWeatherData converts API response to frontend-friendly format
 func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, airport Airport) *ProcessedWeatherData {
 	processed := &ProcessedWeatherData{
@@ -232,8 +275,17 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 		WindData:        make([]WindPoint, 0),
 	}
 
+	// One lookup per date, before the loop, rather than two per hour inside it.
+	daylight := resolveDaylight(ctx, airport, apiResponse.Hourly.Time)
+
 	// Process temperature and cloud data
 	for i, timeStr := range apiResponse.Hourly.Time {
+		// The daylight window covering this hour, or nil if the date could not be resolved.
+		var hourDaylight *SunriseSunsetResponse
+		if t, err := hourTime(timeStr); err == nil {
+			hourDaylight = daylight[t.Format("2006-01-02")]
+		}
+
 		// Add temperature data
 		tempPoint := TemperaturePoint{}
 		if i < len(apiResponse.Hourly.Temperature2m) && i < len(apiResponse.Hourly.DewPoint2m) && i < len(apiResponse.Hourly.Precipitation) && i < len(apiResponse.Hourly.PrecipitationProbability) {
@@ -300,26 +352,21 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 		})
 
 		// Calculate VFR probability
-		vfrProbability, visibilityKnown := calculateVFRProbability(ctx, airport, cloudBase, windSpeed10m, crosswind10m, crosswindGusts10m, visibility, tempPoint, timeStr)
+		vfrProbability, visibilityKnown := calculateVFRProbability(hourDaylight, cloudBase, windSpeed10m, crosswind10m, crosswindGusts10m, visibility, tempPoint, timeStr)
 
 		// Get weather code if available
 		processWeatherCode := ""
 		if i < len(apiResponse.Hourly.WeatherCode) {
 			processWeatherCode = strconv.Itoa(apiResponse.Hourly.WeatherCode[i])
 
-			// is daylight? Both lookups can fail, and neither result is usable then --
-			// the icon simply keeps its daytime variant rather than taking the process
-			// down with a nil dereference.
-			t, err := time.Parse(time.RFC3339, timeStr+":00Z")
-			if err != nil {
-				log.Printf("failed to parse time %q: %v", timeStr, err)
-			} else {
-				debug("time: %s", t)
-				dayLight, err := getDayLightFn(ctx, airport.LatString(), airport.LonString(), t)
-				if err != nil {
-					log.Printf("failed to get daylight for %s: %v", timeStr, err)
-				} else if !(t.After(dayLight.Parsed.Sunrise) && t.Before(dayLight.Parsed.Sunset)) {
-					processWeatherCode += "-night"
+			// is daylight? An unresolved date leaves hourDaylight nil, and the icon simply
+			// keeps its daytime variant rather than taking the process down.
+			if hourDaylight != nil {
+				if t, err := hourTime(timeStr); err == nil {
+					debug("time: %s", t)
+					if !(t.After(hourDaylight.Parsed.Sunrise) && t.Before(hourDaylight.Parsed.Sunset)) {
+						processWeatherCode += "-night"
+					}
 				}
 			}
 		}
@@ -480,29 +527,30 @@ func getCloudBase(cloudLayers []CloudLayer) *int {
 // Open-Meteo drops visibility beyond the ICON-EU horizon, which is the tail of every
 // forecast. Those hours are still scored on the factors that are available; the caller
 // is expected to present them as estimates rather than as hard numbers.
-func calculateVFRProbability(ctx context.Context, airport Airport, cloudBase *int, windSpeed, crosswind, crosswindGusts float64, visibility *float64, tempPoint TemperaturePoint, timeStr string) (probability int, visibilityKnown bool) {
+//
+// dayLight is the window for this hour's date, resolved once per date by resolveDaylight.
+// A nil dayLight means the lookup failed and the hour cannot be scored at all.
+func calculateVFRProbability(dayLight *SunriseSunsetResponse, cloudBase *int, windSpeed, crosswind, crosswindGusts float64, visibility *float64, tempPoint TemperaturePoint, timeStr string) (probability int, visibilityKnown bool) {
 
 	debugProb := func(reason string, value string) {
 		debug("VFR probability modified, reason %s, value %s", reason, value)
 	}
 
-	timeStr += ":00Z"
-	t, err := time.Parse(time.RFC3339, timeStr)
+	t, err := hourTime(timeStr)
 	if err != nil {
 		log.Printf("failed to parse time %q: %v", timeStr, err)
+		return -1, false
+	}
+
+	// Without a daylight window there is no way to tell a CAVOK afternoon from the middle
+	// of the night, so the hour scores -1 ("no data") rather than a misleading number.
+	if dayLight == nil {
 		return -1, false
 	}
 
 	// Start with 100% VFR probability
 	probability = 100
 	visibilityKnown = visibility != nil
-
-	// check daylight
-	dayLight, err := getDayLightFn(ctx, airport.LatString(), airport.LonString(), t)
-	if err != nil {
-		log.Printf("failed to get daylight for %s: %v", t.Format(time.RFC3339), err)
-		return -1, false
-	}
 
 	debug("calc vfr prob for %s", t.Format(time.RFC822))
 

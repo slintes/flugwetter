@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -19,10 +20,9 @@ var testAirport = Airport{
 	RunwayHeadings: []float64{55, 235},
 }
 
-// stubDayLight points getDayLightFn at a fixed summer day at EDWN and restores the
-// real implementation when the test ends. Times are UTC, matching the naive-UTC
+// testDayLight is a fixed summer day at EDWN. Times are UTC, matching the naive-UTC
 // timestamps Open-Meteo returns under timezone=GMT.
-func stubDayLight(t *testing.T) {
+func testDayLight(t *testing.T) *SunriseSunsetResponse {
 	t.Helper()
 
 	mustParse := func(s string) time.Time {
@@ -38,7 +38,15 @@ func stubDayLight(t *testing.T) {
 	resp.Parsed.Sunrise = mustParse("2026-08-03T03:30:00Z")
 	resp.Parsed.Sunset = mustParse("2026-08-03T19:30:00Z")
 	resp.Parsed.CivilTwilightEnd = mustParse("2026-08-03T20:20:00Z")
+	return resp
+}
 
+// stubDayLight points getDayLightFn at testDayLight and restores the real implementation
+// when the test ends.
+func stubDayLight(t *testing.T) {
+	t.Helper()
+
+	resp := testDayLight(t)
 	original := getDayLightFn
 	getDayLightFn = func(_ context.Context, latitude, longitude string, _ time.Time) (*SunriseSunsetResponse, error) {
 		return resp, nil
@@ -58,10 +66,9 @@ func calmCAVOK() (cloudBase *int, wind, crosswind, gusts float64, temp Temperatu
 }
 
 func TestCalculateVFRProbability_UnknownVisibilityStillScores(t *testing.T) {
-	stubDayLight(t)
 	base, wind, xw, gusts, temp := calmCAVOK()
 
-	prob, known := calculateVFRProbability(context.Background(), testAirport, base, wind, xw, gusts, nil, temp, midday)
+	prob, known := calculateVFRProbability(testDayLight(t), base, wind, xw, gusts, nil, temp, midday)
 
 	if known {
 		t.Errorf("visibilityKnown = true, want false when visibility is nil")
@@ -74,9 +81,8 @@ func TestCalculateVFRProbability_UnknownVisibilityStillScores(t *testing.T) {
 }
 
 func TestCalculateVFRProbability_UnknownVisibilityKeepsOtherPenalties(t *testing.T) {
-	stubDayLight(t)
 	// Low ceiling at FL16 costs 25; nothing else applies.
-	prob, known := calculateVFRProbability(context.Background(), testAirport, ptrInt(16), 0, 0, 0, nil, TemperaturePoint{Temperature: 18}, midday)
+	prob, known := calculateVFRProbability(testDayLight(t), ptrInt(16), 0, 0, 0, nil, TemperaturePoint{Temperature: 18}, midday)
 
 	if known {
 		t.Errorf("visibilityKnown = true, want false")
@@ -87,10 +93,9 @@ func TestCalculateVFRProbability_UnknownVisibilityKeepsOtherPenalties(t *testing
 }
 
 func TestCalculateVFRProbability_KnownVisibility(t *testing.T) {
-	stubDayLight(t)
 	base, wind, xw, gusts, temp := calmCAVOK()
 
-	prob, known := calculateVFRProbability(context.Background(), testAirport, base, wind, xw, gusts, ptrFloat(40), temp, midday)
+	prob, known := calculateVFRProbability(testDayLight(t), base, wind, xw, gusts, ptrFloat(40), temp, midday)
 
 	if !known {
 		t.Errorf("visibilityKnown = false, want true when visibility is present")
@@ -101,8 +106,6 @@ func TestCalculateVFRProbability_KnownVisibility(t *testing.T) {
 }
 
 func TestCalculateVFRProbability_HardNoGo(t *testing.T) {
-	stubDayLight(t)
-
 	tests := []struct {
 		name       string
 		cloudBase  *int
@@ -117,7 +120,7 @@ func TestCalculateVFRProbability_HardNoGo(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			prob, _ := calculateVFRProbability(context.Background(), testAirport, tc.cloudBase, 0, 0, 0, tc.visibility, TemperaturePoint{Temperature: 18}, tc.timeStr)
+			prob, _ := calculateVFRProbability(testDayLight(t), tc.cloudBase, 0, 0, 0, tc.visibility, TemperaturePoint{Temperature: 18}, tc.timeStr)
 			if prob != 0 {
 				t.Errorf("probability = %d, want 0", prob)
 			}
@@ -126,12 +129,26 @@ func TestCalculateVFRProbability_HardNoGo(t *testing.T) {
 }
 
 func TestCalculateVFRProbability_UnparseableTime(t *testing.T) {
-	stubDayLight(t)
-
-	prob, known := calculateVFRProbability(context.Background(), testAirport, nil, 0, 0, 0, ptrFloat(40), TemperaturePoint{}, "not-a-time")
+	prob, known := calculateVFRProbability(testDayLight(t), nil, 0, 0, 0, ptrFloat(40), TemperaturePoint{}, "not-a-time")
 
 	if prob != -1 {
 		t.Errorf("probability = %d, want -1 for an unscoreable hour", prob)
+	}
+	if known {
+		t.Errorf("visibilityKnown = true, want false when no score was computed")
+	}
+}
+
+// A date resolveDaylight could not look up is absent from its map, so the hour arrives here
+// with a nil window. Scoring it on the remaining factors would report a CAVOK afternoon and
+// the middle of the night identically, so it must yield "no data" instead.
+func TestCalculateVFRProbability_NoDaylightWindow(t *testing.T) {
+	base, wind, xw, gusts, temp := calmCAVOK()
+
+	prob, known := calculateVFRProbability(nil, base, wind, xw, gusts, ptrFloat(40), temp, midday)
+
+	if prob != -1 {
+		t.Errorf("probability = %d, want -1 without a daylight window", prob)
 	}
 	if known {
 		t.Errorf("visibilityKnown = true, want false when no score was computed")
@@ -283,6 +300,39 @@ func TestProcessWeatherData_SeriesStayAligned(t *testing.T) {
 		if tc.n != len(times) {
 			t.Errorf("len(%s) = %d, want %d", tc.name, tc.n, len(times))
 		}
+	}
+}
+
+// The regression this guards: daylight used to be looked up once per hour from two separate
+// call sites -- the -night icon suffix and calculateVFRProbability -- so a 48-hour forecast
+// issued 96 lookups. Results were cached by date, but errors were not, so a failing upstream
+// produced every one of them as a real serial request. The bound must be the number of
+// distinct dates, not the length of the forecast.
+func TestProcessWeatherData_ResolvesDaylightOncePerDate(t *testing.T) {
+	resp := testDayLight(t)
+
+	var calls int
+	original := getDayLightFn
+	getDayLightFn = func(_ context.Context, latitude, longitude string, _ time.Time) (*SunriseSunsetResponse, error) {
+		calls++
+		return resp, nil
+	}
+	t.Cleanup(func() { getDayLightFn = original })
+
+	// 26 hours spanning two dates.
+	var times []string
+	for h := 0; h < 24; h++ {
+		times = append(times, fmt.Sprintf("2026-08-03T%02d:00", h))
+	}
+	times = append(times, "2026-08-04T00:00", "2026-08-04T01:00")
+
+	got := processWeatherData(context.Background(), hourlyFixture(times), testAirport)
+
+	if len(got.VfrData) != len(times) {
+		t.Fatalf("len(VfrData) = %d, want %d", len(got.VfrData), len(times))
+	}
+	if calls != 2 {
+		t.Errorf("daylight lookups = %d, want 2 (one per distinct date, not one per hour)", calls)
 	}
 }
 
