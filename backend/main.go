@@ -98,10 +98,16 @@ func loggingMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
+	// A broken airport list is fatal: an empty one renders as a working UI with no data.
+	if err := loadAirports(); err != nil {
+		log.Fatalf("Failed to load airports: %v", err)
+	}
+
 	r := mux.NewRouter()
 
-	// pre cache weather data
-	_, _ = GetWeatherData()
+	// pre cache weather data for the default airport only. Warming all of them would fire
+	// one very large Open-Meteo request per airfield before the first user arrives.
+	_, _ = GetWeatherData(defaultAirport)
 
 	// Add logging middleware to log all requests
 	r.Use(loggingMiddleware)
@@ -110,7 +116,14 @@ func main() {
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("../frontend/"))))
 
 	// API endpoints
+	r.HandleFunc("/api/config", getConfig).Methods("GET")
 	r.HandleFunc("/api/weather", getWeatherData).Methods("GET")
+	if openAIPEnabled() {
+		r.HandleFunc(tileRoute, serveOpenAIPTile).Methods("GET")
+		fmt.Println("openAIP overlay enabled")
+	} else {
+		fmt.Printf("openAIP overlay disabled: set %s to enable it\n", openAIPKeyEnv)
+	}
 	r.HandleFunc("/", serveIndex).Methods("GET")
 
 	fmt.Println("Server starting on :8080")
@@ -121,13 +134,46 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "../frontend/index.html")
 }
 
+// ConfigResponse is everything the frontend needs to boot: which airfields exist, which one
+// to show first, and whether the openAIP overlay is available.
+type ConfigResponse struct {
+	Airports       []Airport `json:"airports"`
+	DefaultAirport string    `json:"default_airport"`
+	OpenAIPOverlay bool      `json:"openaip_overlay"`
+}
+
+func getConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	config := ConfigResponse{
+		Airports:       airports,
+		DefaultAirport: defaultAirport.Identifier,
+		OpenAIPOverlay: openAIPEnabled(),
+	}
+
+	if err := json.NewEncoder(w).Encode(config); err != nil {
+		log.Printf("Error encoding config: %v", err)
+		http.Error(w, "Failed to encode config", http.StatusInternalServerError)
+	}
+}
+
 func getWeatherData(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	data, err := GetWeatherData()
+	// An unknown identifier is rejected rather than falling back to the default: serving
+	// another airfield's weather under the wrong name is not something the user can spot.
+	airport, err := lookupAirport(r.URL.Query().Get("airport"))
 	if err != nil {
-		log.Printf("Error fetching weather data: %v", err)
+		log.Printf("Error resolving airport: %v", err)
+		http.Error(w, "Unknown airport", http.StatusBadRequest)
+		return
+	}
+
+	data, err := GetWeatherData(airport)
+	if err != nil {
+		log.Printf("Error fetching weather data for %s: %v", airport.Identifier, err)
 		http.Error(w, "Failed to fetch weather data", http.StatusInternalServerError)
 		return
 	}

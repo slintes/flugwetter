@@ -25,9 +25,21 @@ html {
 }
 
 header {
-    text-align: center;
-    margin-bottom: 20px;
+    /* Title and airport picker share one line to save vertical space; they wrap onto two
+       only when the viewport is too narrow for both. */
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px 20px;
+    margin-bottom: 10px;
     color: white;
+}
+
+.header-logo {
+    height: 1.2em;
+    vertical-align: middle;
+    margin-right: 0.3em;
 }
 
 header h1 {
@@ -39,6 +51,129 @@ header h1 {
 header p {
     font-size: 1.2rem;
     opacity: 0.9;
+}
+
+.airport-picker {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.95rem;
+}
+
+.airport-picker select {
+    padding: 6px 10px;
+    border: none;
+    border-radius: 20px;
+    background: white;
+    color: #2d3436;
+    font-size: 0.95rem;
+    /* Wide enough for the longest label — identifier, name and both runways — so the
+       collapsed select does not clip it. */
+    max-width: 26rem;
+    cursor: pointer;
+}
+
+.airport-picker button {
+    padding: 6px 15px;
+    background: #74b9ff;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+
+.airport-picker button:hover:not(:disabled) {
+    background: #0984e3;
+}
+
+.airport-picker button:disabled,
+.airport-picker select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Map picker modal */
+.map-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: clamp(8px, 4vmin, 40px);
+}
+
+.map-modal[hidden] {
+    display: none;
+}
+
+.map-modal-content {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    /* Grows with the window in both directions, capped so the dialog does not become
+       absurd on a large monitor. The backdrop's padding is what keeps it off the edges. */
+    width: min(1200px, 100%);
+    height: min(1000px, 100%);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.map-modal-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 15px;
+    border-bottom: 3px solid #74b9ff;
+}
+
+.map-modal-header h3 {
+    color: #2d3436;
+    font-size: 1.1rem;
+}
+
+.map-modal-header button {
+    background: none;
+    border: none;
+    font-size: 1.6rem;
+    line-height: 1;
+    color: #636e72;
+    cursor: pointer;
+}
+
+#airportMap {
+    /* Takes whatever the dialog has left after the header and the hint. min-height: 0 is
+       required — flex items default to min-height: auto, which would let the map push the
+       dialog past the viewport instead of shrinking with it. */
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+}
+
+.map-modal-hint {
+    flex: 0 0 auto;
+    padding: 8px 15px;
+    font-size: 0.85rem;
+    color: #636e72;
+}
+
+.airport-tooltip {
+    background: rgba(255,255,255,0.85);
+    border: none;
+    box-shadow: none;
+    font-weight: bold;
+    font-size: 0.75rem;
+    padding: 1px 4px;
+}
+
+.airport-tooltip::before {
+    display: none;
 }
 
 main {
@@ -217,6 +352,17 @@ canvas {
     header h1 {
         font-size: 2rem;
     }
+
+    .airport-picker {
+        font-size: 0.85rem;
+    }
+
+    /* Keep the select narrow enough that the Map button stays on its line rather than
+       wrapping onto a third one. */
+    .airport-picker select {
+        max-width: 14rem;
+    }
+
 
     .chart-container {
         padding: 10px;

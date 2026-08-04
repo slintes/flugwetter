@@ -5,28 +5,11 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 )
-
-type Airport struct {
-	Identifier     string
-	Latitude       string
-	Longitude      string
-	RunwayHeadings []float64 // true headings in degrees, both ends of each runway
-}
-
-var EDWN = Airport{
-	Identifier: "EDWN",
-	Latitude:   "52.4575",
-	Longitude:  "7.1850",
-	// Runway 05/23. Published magnetic 050°/230°; variation at EDWN is
-	// ~2-3°E and is ignored (crosswind error < 1kt).
-	RunwayHeadings: []float64{50, 230},
-}
 
 // WeatherAPIResponse represents the complete API response from open-meteo
 type WeatherAPIResponse struct {
@@ -115,45 +98,60 @@ type WeatherAPIResponse struct {
 	} `json:"hourly"`
 }
 
-// WeatherCache manages cached weather data
-type WeatherCache struct {
+// cacheEntry is one airport's cached payload.
+type cacheEntry struct {
 	data      *ProcessedWeatherData
 	timestamp time.Time
-	mutex     sync.RWMutex
+}
+
+// WeatherCache manages cached weather data, one entry per airport identifier.
+type WeatherCache struct {
+	entries map[string]*cacheEntry
+	mutex   sync.RWMutex
 }
 
 var (
-	cache         = &WeatherCache{}
+	cache = &WeatherCache{
+		entries: make(map[string]*cacheEntry),
+	}
 	cacheDuration = 15 * time.Minute
-	apiURL        = fmt.Sprintf("https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&hourly=precipitation_probability,pressure_msl,cloud_cover_low,cloud_cover,cloud_cover_mid,cloud_cover_high,convective_cloud_base,wind_speed_120m,wind_speed_180m,wind_direction_120m,wind_direction_180m,temperature_180m,temperature_120m,temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,rain,showers,snowfall,snow_depth,weather_code,surface_pressure,visibility,wind_speed_10m,wind_speed_80m,wind_direction_10m,wind_direction_80m,wind_gusts_10m,temperature_80m,cloud_cover_1000hPa,cloud_cover_975hPa,cloud_cover_950hPa,cloud_cover_925hPa,cloud_cover_900hPa,cloud_cover_850hPa,cloud_cover_800hPa,cloud_cover_700hPa,cloud_cover_600hPa,cloud_cover_500hPa,cloud_cover_400hPa,cloud_cover_300hPa,cloud_cover_200hPa,cloud_cover_250hPa,cloud_cover_150hPa,cloud_cover_100hPa,cloud_cover_70hPa,cloud_cover_50hPa,cloud_cover_30hPa,wind_speed_1000hPa,wind_speed_975hPa,wind_speed_950hPa,wind_speed_925hPa,wind_speed_900hPa,wind_speed_850hPa,wind_speed_800hPa,wind_speed_700hPa,wind_speed_600hPa,wind_direction_600hPa,wind_direction_700hPa,wind_direction_800hPa,wind_direction_850hPa,wind_direction_900hPa,wind_direction_925hPa,wind_direction_950hPa,wind_direction_975hPa,wind_direction_1000hPa,geopotential_height_1000hPa,geopotential_height_975hPa,geopotential_height_950hPa,geopotential_height_925hPa,geopotential_height_900hPa,geopotential_height_850hPa,geopotential_height_800hPa,geopotential_height_700hPa,geopotential_height_600hPa,geopotential_height_500hPa,geopotential_height_400hPa,geopotential_height_300hPa,geopotential_height_250hPa,geopotential_height_200hPa,geopotential_height_150hPa,geopotential_height_100hPa,geopotential_height_70hPa,geopotential_height_50hPa,geopotential_height_30hPa&models=icon_seamless&timezone=GMT&wind_speed_unit=kn", EDWN.Latitude, EDWN.Longitude)
+	// apiURLTemplate takes latitude and longitude; everything else about the query is
+	// identical for every airport.
+	apiURLTemplate = "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&hourly=precipitation_probability,pressure_msl,cloud_cover_low,cloud_cover,cloud_cover_mid,cloud_cover_high,convective_cloud_base,wind_speed_120m,wind_speed_180m,wind_direction_120m,wind_direction_180m,temperature_180m,temperature_120m,temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,rain,showers,snowfall,snow_depth,weather_code,surface_pressure,visibility,wind_speed_10m,wind_speed_80m,wind_direction_10m,wind_direction_80m,wind_gusts_10m,temperature_80m,cloud_cover_1000hPa,cloud_cover_975hPa,cloud_cover_950hPa,cloud_cover_925hPa,cloud_cover_900hPa,cloud_cover_850hPa,cloud_cover_800hPa,cloud_cover_700hPa,cloud_cover_600hPa,cloud_cover_500hPa,cloud_cover_400hPa,cloud_cover_300hPa,cloud_cover_200hPa,cloud_cover_250hPa,cloud_cover_150hPa,cloud_cover_100hPa,cloud_cover_70hPa,cloud_cover_50hPa,cloud_cover_30hPa,wind_speed_1000hPa,wind_speed_975hPa,wind_speed_950hPa,wind_speed_925hPa,wind_speed_900hPa,wind_speed_850hPa,wind_speed_800hPa,wind_speed_700hPa,wind_speed_600hPa,wind_direction_600hPa,wind_direction_700hPa,wind_direction_800hPa,wind_direction_850hPa,wind_direction_900hPa,wind_direction_925hPa,wind_direction_950hPa,wind_direction_975hPa,wind_direction_1000hPa,geopotential_height_1000hPa,geopotential_height_975hPa,geopotential_height_950hPa,geopotential_height_925hPa,geopotential_height_900hPa,geopotential_height_850hPa,geopotential_height_800hPa,geopotential_height_700hPa,geopotential_height_600hPa,geopotential_height_500hPa,geopotential_height_400hPa,geopotential_height_300hPa,geopotential_height_250hPa,geopotential_height_200hPa,geopotential_height_150hPa,geopotential_height_100hPa,geopotential_height_70hPa,geopotential_height_50hPa,geopotential_height_30hPa&models=icon_seamless&timezone=GMT&wind_speed_unit=kn"
 )
 
-// GetWeatherData returns cached data if available and fresh, otherwise fetches new data
-func GetWeatherData() (*ProcessedWeatherData, error) {
+// buildAPIURL returns the Open-Meteo query for one airport.
+func buildAPIURL(airport Airport) string {
+	return fmt.Sprintf(apiURLTemplate, airport.LatString(), airport.LonString())
+}
+
+// GetWeatherData returns cached data for the given airport if available and fresh,
+// otherwise fetches new data.
+func GetWeatherData(airport Airport) (*ProcessedWeatherData, error) {
 	cache.mutex.RLock()
-	if cache.data != nil && time.Since(cache.timestamp) < cacheDuration {
+	if entry, ok := cache.entries[airport.Identifier]; ok && time.Since(entry.timestamp) < cacheDuration {
 		defer cache.mutex.RUnlock()
-		return cache.data, nil
+		return entry.data, nil
 	}
 	cache.mutex.RUnlock()
 
 	// Fetch new data
-	return fetchAndCacheWeatherData()
+	return fetchAndCacheWeatherData(airport)
 }
 
 // fetchAndCacheWeatherData fetches fresh data from the API and caches it
-func fetchAndCacheWeatherData() (*ProcessedWeatherData, error) {
+func fetchAndCacheWeatherData(airport Airport) (*ProcessedWeatherData, error) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
 	// Double-check if another goroutine already updated the cache
-	if cache.data != nil && time.Since(cache.timestamp) < cacheDuration {
-		return cache.data, nil
+	if entry, ok := cache.entries[airport.Identifier]; ok && time.Since(entry.timestamp) < cacheDuration {
+		return entry.data, nil
 	}
 
-	fmt.Println("Fetching fresh weather data from API...")
+	fmt.Printf("Fetching fresh weather data from API for %s...\n", airport.Identifier)
 
-	resp, err := http.Get(apiURL)
+	resp, err := http.Get(buildAPIURL(airport))
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch weather data: %w", err)
 	}
@@ -173,19 +171,21 @@ func fetchAndCacheWeatherData() (*ProcessedWeatherData, error) {
 		return nil, fmt.Errorf("failed to parse API response: %w", err)
 	}
 
-	processedData := processWeatherData(&apiResponse)
+	processedData := processWeatherData(&apiResponse, airport)
 
 	// Update cache
-	cache.data = processedData
-	cache.timestamp = time.Now()
+	cache.entries[airport.Identifier] = &cacheEntry{
+		data:      processedData,
+		timestamp: time.Now(),
+	}
 
-	fmt.Printf("Successfully cached weather data with %d data points\n", len(processedData.TemperatureData))
+	fmt.Printf("Successfully cached weather data for %s with %d data points\n", airport.Identifier, len(processedData.TemperatureData))
 
 	return processedData, nil
 }
 
 // processWeatherData converts API response to frontend-friendly format
-func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
+func processWeatherData(apiResponse *WeatherAPIResponse, airport Airport) *ProcessedWeatherData {
 	processed := &ProcessedWeatherData{
 		TemperatureData: make([]TemperaturePoint, 0),
 		CloudData:       make([]CloudPoint, 0),
@@ -242,8 +242,8 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 		}
 
 		// Crosswind components for the runway in use
-		crosswind10m := EDWN.crosswindComponent(windSpeed10m, windDirection10m)
-		crosswindGusts10m := EDWN.crosswindComponent(windGusts10m, windDirection10m)
+		crosswind10m := airport.crosswindComponent(windSpeed10m, windDirection10m)
+		crosswindGusts10m := airport.crosswindComponent(windGusts10m, windDirection10m)
 
 		// Add wind data - process all levels.
 		// Always emit a WindPoint, even when no level qualified: the 10m speed, gusts
@@ -260,7 +260,7 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 		})
 
 		// Calculate VFR probability
-		vfrProbability, visibilityKnown := calculateVFRProbability(cloudBase, windSpeed10m, crosswind10m, crosswindGusts10m, visibility, tempPoint, timeStr)
+		vfrProbability, visibilityKnown := calculateVFRProbability(airport, cloudBase, windSpeed10m, crosswind10m, crosswindGusts10m, visibility, tempPoint, timeStr)
 
 		// Get weather code if available
 		processWeatherCode := ""
@@ -275,7 +275,7 @@ func processWeatherData(apiResponse *WeatherAPIResponse) *ProcessedWeatherData {
 				log.Printf("failed to parse time %q: %v", timeStr, err)
 			} else {
 				debug("time: %s", t)
-				dayLight, err := getDayLightFn(EDWN.Latitude, EDWN.Longitude, t)
+				dayLight, err := getDayLightFn(airport.LatString(), airport.LonString(), t)
 				if err != nil {
 					log.Printf("failed to get daylight for %s: %v", timeStr, err)
 				} else if !(t.After(dayLight.Parsed.Sunrise) && t.Before(dayLight.Parsed.Sunset)) {
@@ -418,18 +418,6 @@ func getWindSymbol(speedKnots float64, direction int) string {
 	return "barb"
 }
 
-// crosswindComponent returns the crosswind in knots for a wind of speedKnots
-// from directionDegrees (meteorological, true north), taking the most
-// favourable of the airport's runway headings.
-func (a Airport) crosswindComponent(speedKnots float64, directionDegrees int) float64 {
-	crosswind := math.Inf(1)
-	for _, heading := range a.RunwayHeadings {
-		angle := (float64(directionDegrees) - heading) * math.Pi / 180
-		crosswind = math.Min(crosswind, math.Abs(speedKnots*math.Sin(angle)))
-	}
-	return crosswind
-}
-
 // getCloudBase calculates the cloud base
 // Returns the height as flight level if any
 func getCloudBase(cloudLayers []CloudLayer) *int {
@@ -452,7 +440,7 @@ func getCloudBase(cloudLayers []CloudLayer) *int {
 // Open-Meteo drops visibility beyond the ICON-EU horizon, which is the tail of every
 // forecast. Those hours are still scored on the factors that are available; the caller
 // is expected to present them as estimates rather than as hard numbers.
-func calculateVFRProbability(cloudBase *int, windSpeed, crosswind, crosswindGusts float64, visibility *float64, tempPoint TemperaturePoint, timeStr string) (probability int, visibilityKnown bool) {
+func calculateVFRProbability(airport Airport, cloudBase *int, windSpeed, crosswind, crosswindGusts float64, visibility *float64, tempPoint TemperaturePoint, timeStr string) (probability int, visibilityKnown bool) {
 
 	debugProb := func(reason string, value string) {
 		debug("VFR probability modified, reason %s, value %s", reason, value)
@@ -470,7 +458,7 @@ func calculateVFRProbability(cloudBase *int, windSpeed, crosswind, crosswindGust
 	visibilityKnown = visibility != nil
 
 	// check daylight
-	dayLight, err := getDayLightFn(EDWN.Latitude, EDWN.Longitude, t)
+	dayLight, err := getDayLightFn(airport.LatString(), airport.LonString(), t)
 	if err != nil {
 		log.Printf("failed to get daylight for %s: %v", t.Format(time.RFC3339), err)
 		return -1, false

@@ -1,0 +1,107 @@
+[
+  {
+    "identifier": "EDWN",
+    "name": "Nordhorn-Lingen",
+    "latitude": 52.4575,
+    "longitude": 7.185,
+    "runways": ["05/23"],
+    "runway_headings": [55.0, 235.0],
+    "pinned": true
+  },
+  {
+    "identifier": "EDWG",
+    "name": "Wangerooge",
+    "latitude": 53.78256,
+    "longitude": 7.91957,
+    "runways": ["09/27", "01/19"],
+    "runway_headings": [94.1, 274.1, 15.5, 195.5]
+  },
+  {
+    "identifier": "EDWY",
+    "name": "Norderney",
+    "latitude": 53.70691,
+    "longitude": 7.23006,
+    "runways": ["08/26"],
+    "runway_headings": [85.8, 265.8]
+  },
+  {
+    "identifier": "EDWJ",
+    "name": "Juist",
+    "latitude": 53.68127,
+    "longitude": 7.05651,
+    "runways": ["07/25"],
+    "runway_headings": [76.3, 256.3]
+  },
+  {
+    "identifier": "EDWI",
+    "name": "Wilhelmshaven-Mariensiel",
+    "latitude": 53.50216,
+    "longitude": 8.05224,
+    "runways": ["02/20", "16/34"],
+    "runway_headings": [21.9, 201.9, 155.2, 335.2]
+  },
+  {
+    "identifier": "EDWE",
+    "name": "Emden",
+    "latitude": 53.39125,
+    "longitude": 7.22732,
+    "runways": ["07/25"],
+    "runway_headings": [72.7, 252.7]
+  },
+  {
+    "identifier": "EDWF",
+    "name": "Leer-Papenburg",
+    "latitude": 53.27187,
+    "longitude": 7.442,
+    "runways": ["08/26"],
+    "runway_headings": [79.1, 259.1]
+  },
+  {
+    "identifier": "EDWC",
+    "name": "Damme",
+    "latitude": 52.48757,
+    "longitude": 8.1851,
+    "runways": ["10/28"],
+    "runway_headings": [103.8, 283.8]
+  },
+  {
+    "identifier": "EDDG",
+    "name": "Münster/Osnabrück",
+    "latitude": 52.13439,
+    "longitude": 7.68366,
+    "runways": ["07/25"],
+    "runway_headings": [71.0, 251.0]
+  },
+  {
+    "identifier": "EDLS",
+    "name": "Stadtlohn-Vreden",
+    "latitude": 51.99558,
+    "longitude": 6.8418,
+    "runways": ["11/29"],
+    "runway_headings": [105.9, 285.9]
+  },
+  {
+    "identifier": "EDLT",
+    "name": "Münster-Telgte",
+    "latitude": 51.94451,
+    "longitude": 7.77364,
+    "runways": ["10/28"],
+    "runway_headings": [94.0, 274.0]
+  },
+  {
+    "identifier": "EDLB",
+    "name": "Borkenberge",
+    "latitude": 51.7798,
+    "longitude": 7.28936,
+    "runways": ["07/25"],
+    "runway_headings": [76.0, 256.0]
+  },
+  {
+    "identifier": "EDLH",
+    "name": "Hamm-Lippewiesen",
+    "latitude": 51.69071,
+    "longitude": 7.81911,
+    "runways": ["06/24"],
+    "runway_headings": [59.4, 239.4]
+  }
+]

@@ -13,10 +13,11 @@ all: build run
 build:
 	podman build -t $(IMAGE_NAME) .
 
-# Run the container
+# Run the container. OPENAIP_API_KEY is passed through when set in the environment;
+# without it the map picker falls back to the OpenStreetMap base layer alone.
 .PHONY: run
 run:
-	podman run -p 8080:8080 $(IMAGE_NAME)
+	podman run -p 8080:8080 -e OPENAIP_API_KEY $(IMAGE_NAME)
 
 # Push the image to registry
 .PHONY: push

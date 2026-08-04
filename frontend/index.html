@@ -9,13 +9,19 @@
          could change behaviour without a commit here. -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h2><img src="static/favicon.svg" alt="" style="height: 1.2em; vertical-align: middle; margin-right: 0.3em;">Flugwetter EDWN</h2>
+            <h2><img src="static/favicon.svg" alt="" class="header-logo">Flugwetter</h2>
+            <div class="airport-picker">
+                <select id="airportSelect" aria-label="Select airport"></select>
+                <button type="button" id="mapPickerButton" title="Pick an airport on the map">Map…</button>
+            </div>
         </header>
 
         <main>
@@ -61,6 +67,20 @@
             </div>
 
         </main>
+    </div>
+
+    <div class="map-modal" id="airportMapModal" hidden>
+        <div class="map-modal-content" role="dialog" aria-modal="true" aria-labelledby="mapModalTitle">
+            <div class="map-modal-header">
+                <h3 id="mapModalTitle">Select an airport</h3>
+                <button type="button" id="mapModalClose" aria-label="Close map">&times;</button>
+            </div>
+            <div id="airportMap"></div>
+            <p class="map-modal-hint">
+                Click a marker to load its forecast.
+                <span id="mapOverlayNote"></span>
+            </p>
+        </div>
     </div>
 
     <script src="static/weather-icons.js"></script>

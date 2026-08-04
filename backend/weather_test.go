@@ -7,6 +7,17 @@ import (
 	"time"
 )
 
+// testAirport is EDWN, fixed here rather than read from airports.json so the scoring tests
+// keep their expected values when the configured list changes.
+var testAirport = Airport{
+	Identifier:     "EDWN",
+	Name:           "Nordhorn-Lingen",
+	Latitude:       52.4575,
+	Longitude:      7.1850,
+	Runways:        []string{"05/23"},
+	RunwayHeadings: []float64{55, 235},
+}
+
 // stubDayLight points getDayLightFn at a fixed summer day at EDWN and restores the
 // real implementation when the test ends. Times are UTC, matching the naive-UTC
 // timestamps Open-Meteo returns under timezone=GMT.
@@ -49,7 +60,7 @@ func TestCalculateVFRProbability_UnknownVisibilityStillScores(t *testing.T) {
 	stubDayLight(t)
 	base, wind, xw, gusts, temp := calmCAVOK()
 
-	prob, known := calculateVFRProbability(base, wind, xw, gusts, nil, temp, midday)
+	prob, known := calculateVFRProbability(testAirport, base, wind, xw, gusts, nil, temp, midday)
 
 	if known {
 		t.Errorf("visibilityKnown = true, want false when visibility is nil")
@@ -64,7 +75,7 @@ func TestCalculateVFRProbability_UnknownVisibilityStillScores(t *testing.T) {
 func TestCalculateVFRProbability_UnknownVisibilityKeepsOtherPenalties(t *testing.T) {
 	stubDayLight(t)
 	// Low ceiling at FL16 costs 25; nothing else applies.
-	prob, known := calculateVFRProbability(ptrInt(16), 0, 0, 0, nil, TemperaturePoint{Temperature: 18}, midday)
+	prob, known := calculateVFRProbability(testAirport, ptrInt(16), 0, 0, 0, nil, TemperaturePoint{Temperature: 18}, midday)
 
 	if known {
 		t.Errorf("visibilityKnown = true, want false")
@@ -78,7 +89,7 @@ func TestCalculateVFRProbability_KnownVisibility(t *testing.T) {
 	stubDayLight(t)
 	base, wind, xw, gusts, temp := calmCAVOK()
 
-	prob, known := calculateVFRProbability(base, wind, xw, gusts, ptrFloat(40), temp, midday)
+	prob, known := calculateVFRProbability(testAirport, base, wind, xw, gusts, ptrFloat(40), temp, midday)
 
 	if !known {
 		t.Errorf("visibilityKnown = false, want true when visibility is present")
@@ -105,7 +116,7 @@ func TestCalculateVFRProbability_HardNoGo(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			prob, _ := calculateVFRProbability(tc.cloudBase, 0, 0, 0, tc.visibility, TemperaturePoint{Temperature: 18}, tc.timeStr)
+			prob, _ := calculateVFRProbability(testAirport, tc.cloudBase, 0, 0, 0, tc.visibility, TemperaturePoint{Temperature: 18}, tc.timeStr)
 			if prob != 0 {
 				t.Errorf("probability = %d, want 0", prob)
 			}
@@ -116,7 +127,7 @@ func TestCalculateVFRProbability_HardNoGo(t *testing.T) {
 func TestCalculateVFRProbability_UnparseableTime(t *testing.T) {
 	stubDayLight(t)
 
-	prob, known := calculateVFRProbability(nil, 0, 0, 0, ptrFloat(40), TemperaturePoint{}, "not-a-time")
+	prob, known := calculateVFRProbability(testAirport, nil, 0, 0, 0, ptrFloat(40), TemperaturePoint{}, "not-a-time")
 
 	if prob != -1 {
 		t.Errorf("probability = %d, want -1 for an unscoreable hour", prob)
@@ -204,7 +215,7 @@ func TestProcessWeatherData_CalmHourKeepsWindRow(t *testing.T) {
 	stubDayLight(t)
 	times := []string{"2026-08-03T10:00", "2026-08-03T11:00", "2026-08-03T12:00"}
 
-	got := processWeatherData(hourlyFixture(times))
+	got := processWeatherData(hourlyFixture(times), testAirport)
 
 	// The regression: `if len(windLayers) > 0` dropped the entire WindPoint when no
 	// level qualified, taking the 10m speed, gusts and both crosswind series with it
@@ -238,7 +249,7 @@ func TestProcessWeatherData_SurvivesDaylightLookupFailure(t *testing.T) {
 			t.Fatalf("processWeatherData panicked on a daylight lookup failure: %v", r)
 		}
 	}()
-	got := processWeatherData(hourlyFixture(times))
+	got := processWeatherData(hourlyFixture(times), testAirport)
 
 	if len(got.VfrData) != len(times) {
 		t.Fatalf("len(VfrData) = %d, want %d", len(got.VfrData), len(times))
@@ -257,7 +268,7 @@ func TestProcessWeatherData_SeriesStayAligned(t *testing.T) {
 	stubDayLight(t)
 	times := []string{"2026-08-03T10:00", "2026-08-03T11:00", "2026-08-03T12:00"}
 
-	got := processWeatherData(hourlyFixture(times))
+	got := processWeatherData(hourlyFixture(times), testAirport)
 
 	for _, tc := range []struct {
 		name string
@@ -328,23 +339,23 @@ func TestParseSunriseSunset(t *testing.T) {
 }
 
 func TestCrosswindComponent(t *testing.T) {
-	// EDWN runway 05/23, true headings {50, 230}.
+	// EDWN runway 05/23, true headings {55, 235}. See testAirport.
 	tests := []struct {
 		name      string
 		speed     float64
 		direction int
 		want      float64
 	}{
-		{"straight down runway 05", 20, 50, 0},
-		{"straight down runway 23", 20, 230, 0},
-		{"90 degrees off both ends", 20, 140, 20},
-		{"calm", 0, 140, 0},
+		{"straight down runway 05", 20, 55, 0},
+		{"straight down runway 23", 20, 235, 0},
+		{"90 degrees off both ends", 20, 145, 20},
+		{"calm", 0, 145, 0},
 	}
 
 	const tolerance = 0.01
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := EDWN.crosswindComponent(tc.speed, tc.direction)
+			got := testAirport.crosswindComponent(tc.speed, tc.direction)
 			if diff := got - tc.want; diff > tolerance || diff < -tolerance {
 				t.Errorf("crosswindComponent(%v, %v) = %v, want %v", tc.speed, tc.direction, got, tc.want)
 			}

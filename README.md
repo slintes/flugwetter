@@ -93,10 +93,19 @@ docker run -p 8080:8080 flugwetter
 
 ## 📡 API Reference
 
+### Configuration Endpoint
+```http
+GET /api/config
+```
+Returns the airport list in display order, the default airport identifier, and whether the
+openAIP overlay is available.
+
 ### Weather Data Endpoint
 ```http
-GET /api/weather
+GET /api/weather?airport=EDWN
 ```
+Omitting `airport` serves the default field; an unknown identifier is a `400` rather than a
+silent fallback.
 
 **Response Structure:**
 ```json
@@ -153,6 +162,12 @@ GET /api/weather
 }
 ```
 
+### Map Tiles
+```http
+GET /api/tiles/openaip/{z}/{x}/{y}.png
+```
+openAIP proxy, registered only when `OPENAIP_API_KEY` is set. Tiles are cached server-side.
+
 ### Static Assets
 ```http
 GET /static/{file}    # CSS, JavaScript, images
@@ -161,13 +176,30 @@ GET /              # Main application page
 
 ## ⚙️ Configuration
 
-### Location Settings
-Default location (modify in `backend/weather.go`):
-```go
-// Coordinates for weather data
-latitude := 52.4575   // Northern Germany (EDWN)
-longitude := 7.1850  // Nordhorn-Lingen
+### Airports
+The selectable airfields live in `backend/airports.json` (embedded into the binary). Pick one
+from the dropdown, or press **Map…** for an openAIP map of north-west Germany and click a
+marker. The choice is remembered per browser and reflected in the URL (`?airport=EDLT`), so a
+link opens on the right field.
+
+Adding an airfield means one entry in `backend/airports.json` — display order (pinned first,
+then north to south) is computed at startup. `runway_headings` are **true** headings for both
+ends of every runway; the published designators are magnetic and rounded. See
+`design-airport-selection.md`.
+
+Set `FLUGWETTER_AIRPORTS_FILE=/path/to/airports.json` to replace the list without a rebuild.
+
+### openAIP overlay
+The map picker draws airspaces and airfields from openAIP, which needs a free API key from
+[accounts.openaip.net](https://accounts.openaip.net):
+
+```bash
+export OPENAIP_API_KEY=your-key
 ```
+
+Without it the map still works, with the OpenStreetMap base layer alone. The key stays on the
+server — tiles are proxied and cached through `/api/tiles/openaip/`. openAIP data is
+CC BY-NC 4.0 (attribution shown on the map, non-commercial use only).
 
 ### Chart Altitude Ranges
 ```javascript
@@ -193,7 +225,7 @@ cacheDuration := 15 * time.Minute
 - ✅ Geopotential height conversion
 - ✅ Wind speeds in knots (aviation standard)
 
-**Location**: Latitude 52.4575, Longitude 7.1850 (EDWN Nordhorn-Lingen)
+**Location**: whichever airfield is selected; see `backend/airports.json`.
 
 ## 📁 Project Structure
 
