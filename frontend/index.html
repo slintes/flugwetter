@@ -35,6 +35,14 @@
                 <button onclick="resetZoom(undefined)">All</button>
             </div>
 
+            <!-- Above the charts on purpose: below them it sat off-screen, so a failed load
+                 looked like nothing had happened. -->
+            <div class="error" id="error" style="display: none;">
+                <p>Failed to load weather data. Please try again later.</p>
+                <button onclick="loadWeatherData()">Retry</button>
+            </div>
+
+            <div class="charts-area">
             <div class="charts-grid">
                 <div class="chart-container vfr-container">
                     <h2>VFR probability</h2>
@@ -57,13 +65,9 @@
                 </div>
             </div>
 
-            <div class="loading" id="loading">
-                <p>Loading weather data...</p>
-            </div>
-
-            <div class="error" id="error" style="display: none;">
-                <p>Failed to load weather data. Please try again later.</p>
-                <button onclick="loadWeatherData()">Retry</button>
+                <div class="charts-loading" id="chartsLoading" hidden>
+                    <div class="spinner" role="status" aria-label="Loading weather data"></div>
+                </div>
             </div>
 
         </main>

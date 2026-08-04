@@ -1601,14 +1601,33 @@ function initializeCharts() {
     });
 }
 
+// The scrim is delayed rather than shown immediately: the backend answers a warm cache in
+// single-digit milliseconds, so an instant spinner would blink on every 15-minute refresh
+// and on every switch back to an airport already fetched — more distracting than no
+// indicator at all. A cold airport goes to Open-Meteo and takes seconds, which is the case
+// worth covering.
+const LOADING_SCRIM_DELAY_MS = 150;
+let loadingScrimTimer = null;
+
+function showLoadingScrim() {
+    clearTimeout(loadingScrimTimer);
+    loadingScrimTimer = setTimeout(() => {
+        document.getElementById('chartsLoading').hidden = false;
+    }, LOADING_SCRIM_DELAY_MS);
+}
+
+function hideLoadingScrim() {
+    clearTimeout(loadingScrimTimer);
+    document.getElementById('chartsLoading').hidden = true;
+}
+
 async function loadWeatherData() {
-    const loadingElement = document.getElementById('loading');
     const errorElement = document.getElementById('error');
-    
+
     try {
-        loadingElement.style.display = 'block';
+        showLoadingScrim();
         errorElement.style.display = 'none';
-        
+
         const url = currentAirportId
             ? `/api/weather?airport=${encodeURIComponent(currentAirportId)}`
             : '/api/weather';
@@ -1617,15 +1636,15 @@ async function loadWeatherData() {
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const data = await response.json();
-        
+
         updateCharts(data);
-        loadingElement.style.display = 'none';
-        
+        hideLoadingScrim();
+
     } catch (error) {
         console.error('Error loading weather data:', error);
-        loadingElement.style.display = 'none';
+        hideLoadingScrim();
         errorElement.style.display = 'block';
     }
 }

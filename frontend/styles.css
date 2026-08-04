@@ -355,17 +355,50 @@ canvas {
     }
 }
 
-.loading {
-    text-align: center;
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 12px;
-    padding: 40px;
+/* Loading scrim. It covers the charts rather than sitting next to them on purpose: while a
+   fetch is in flight the charts still show the *previous* airport's forecast, and for a
+   flight-planning tool that must not read as current. */
+.charts-area {
+    position: relative;
 }
 
-.loading p {
-    font-size: 1.2rem;
-    color: #e2e8f0;
+.charts-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    /* Not centred: the four charts are several viewport heights tall, so centring on the
+       scrim itself puts the spinner off-screen. The sticky rule below keeps it in view
+       wherever the page happens to be scrolled. */
+    align-items: flex-start;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.6);
+    border-radius: 15px;
+    z-index: 5;
+}
+
+.charts-loading[hidden] {
+    display: none;
+}
+
+.spinner {
+    position: sticky;
+    top: calc(50vh - 26px); /* half the viewport, less half the spinner */
+    width: 52px;
+    height: 52px;
+    border: 5px solid rgba(226, 232, 240, 0.25);
+    border-top-color: #93c5fd;
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .spinner {
+        animation-duration: 2.5s;
+    }
 }
 
 .error {
@@ -374,7 +407,8 @@ canvas {
     color: #fee2e2;
     border: 1px solid #991b1b;
     border-radius: 12px;
-    padding: 30px;
+    padding: 20px 30px;
+    margin-bottom: 10px;
 }
 
 .error button {
