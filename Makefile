@@ -4,6 +4,16 @@
 # Image name and tag
 IMAGE_NAME = quay.io/slintes/flugwetter
 
+# The commit being built, with -dirty appended when the tree has uncommitted changes.
+# Images are tagged with this as well as :latest, so what is running can be identified and
+# an older build can be rolled back to by re-tagging it.
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)$(shell git diff --quiet 2>/dev/null || echo -dirty)
+BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# Stamped into the binary so /api/config can report it.
+VERSION_PKG = flugwetter/internal/server
+LDFLAGS = -s -w -X $(VERSION_PKG).commit=$(COMMIT) -X $(VERSION_PKG).buildTime=$(BUILD_TIME)
+
 # Deployment target. The restart script lives on the server, not here: it pulls the image,
 # replays /var/server/flugwetter.yaml as a podman pod and restarts the nginx proxy in front
 # of it. It refers to that yaml by a relative path, so it has to run from /var/server.
@@ -37,21 +47,28 @@ hooks:
 dev:
 	FLUGWETTER_DEV=1 go run .
 
-# Build the container image
+# Build the container image, tagged with the commit as well as latest.
 .PHONY: build
 build:
-	podman build -t $(IMAGE_NAME) .
+	podman build \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-t $(IMAGE_NAME):$(COMMIT) \
+		-t $(IMAGE_NAME):latest \
+		.
 
 # Run the container. OPENAIP_API_KEY is passed through when set in the environment;
 # without it the map picker falls back to the OpenStreetMap base layer alone.
 .PHONY: run
 run:
-	podman run -p 8080:8080 -e OPENAIP_API_KEY $(IMAGE_NAME)
+	podman run --rm --name flugwetter -p 8080:8080 -e OPENAIP_API_KEY $(IMAGE_NAME):latest
 
-# Push the image to registry
+# Push both tags. The commit tag is what makes a rollback possible: re-tag an older one as
+# latest on the server and restart.
 .PHONY: push
 push:
-	podman push $(IMAGE_NAME)
+	podman push $(IMAGE_NAME):$(COMMIT)
+	podman push $(IMAGE_NAME):latest
 
 # Restart the deployment on the server. Only useful after `push` -- the script pulls
 # whatever is currently tagged latest in the registry, so restarting without pushing first
@@ -66,6 +83,13 @@ restart:
 .PHONY: deploy
 deploy: build push restart
 
+# Show what a build would stamp.
+.PHONY: version
+version:
+	@echo "commit:     $(COMMIT)"
+	@echo "build time: $(BUILD_TIME)"
+	@echo "image:      $(IMAGE_NAME):$(COMMIT)"
+
 # Help target
 .PHONY: help
 help:
@@ -74,6 +98,7 @@ help:
 	@echo "  test    - Run the Go and frontend test suites"
 	@echo "  dev     - Run locally with the frontend served from disk"
 	@echo "  hooks   - Install the checked-in git hooks"
+	@echo "  version - Show the commit that would be built"
 	@echo "  build   - Build container image"
 	@echo "  run     - Run container"
 	@echo "  push    - Push image to registry"

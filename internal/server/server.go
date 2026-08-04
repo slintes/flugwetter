@@ -131,6 +131,9 @@ const (
 func Run() error {
 	setupLogging()
 
+	build := buildInfo()
+	slog.Info("flugwetter starting", "commit", build.Commit, "built", build.BuildTime, "go", build.GoVersion)
+
 	// A broken airport list is fatal: an empty one renders as a working UI with no data.
 	if err := loadAirports(); err != nil {
 		return fmt.Errorf("failed to load airports: %w", err)
@@ -209,6 +212,9 @@ type ConfigResponse struct {
 	Airports       []Airport `json:"airports"`
 	DefaultAirport string    `json:"default_airport"`
 	OpenAIPOverlay bool      `json:"openaip_overlay"`
+	// Build identifies the running binary, so a deployment can be checked against what was
+	// pushed without guessing from the image tag.
+	Build BuildInfo `json:"build"`
 }
 
 func getConfig(w http.ResponseWriter, r *http.Request) {
@@ -221,6 +227,7 @@ func getConfig(w http.ResponseWriter, r *http.Request) {
 		Airports:       airports,
 		DefaultAirport: defaultAirport.Identifier,
 		OpenAIPOverlay: openAIPEnabled(),
+		Build:          buildInfo(),
 	}
 
 	if err := json.NewEncoder(w).Encode(config); err != nil {
