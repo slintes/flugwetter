@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -188,7 +188,7 @@ func cachedEntry(identifier string) (*cacheEntry, bool) {
 // same cold airport may both fetch; the double-check below makes the loser discard its
 // result rather than overwrite a fresher entry.
 func fetchAndCacheWeatherData(ctx context.Context, airport Airport) (*ProcessedWeatherData, error) {
-	fmt.Printf("Fetching fresh weather data from API for %s...\n", airport.Identifier)
+	slog.Info("fetching fresh weather data", "airport", airport.Identifier)
 
 	processedData, err := fetchWeatherFn(ctx, airport)
 	if err != nil {
@@ -196,8 +196,10 @@ func fetchAndCacheWeatherData(ctx context.Context, airport Airport) (*ProcessedW
 		// upstream is unreachable. It is flagged rather than passed off as current: for a
 		// flight-planning tool, silently showing stale weather is the worse failure.
 		if entry, ok := cachedEntry(airport.Identifier); ok {
-			log.Printf("Serving stale weather data for %s (fetched %s ago): %v",
-				airport.Identifier, time.Since(entry.timestamp).Round(time.Minute), err)
+			slog.Warn("serving stale weather data",
+				"airport", airport.Identifier,
+				"age", time.Since(entry.timestamp).Round(time.Minute),
+				"error", err)
 
 			// A shallow copy: the cached payload is shared with other goroutines and must
 			// not be mutated. Only the flag differs, and the slices are never written to.
@@ -221,7 +223,7 @@ func fetchAndCacheWeatherData(ctx context.Context, airport Airport) (*ProcessedW
 		timestamp: processedData.GeneratedAt,
 	}
 
-	fmt.Printf("Successfully cached weather data for %s with %d data points\n", airport.Identifier, len(processedData.TemperatureData))
+	slog.Info("cached weather data", "airport", airport.Identifier, "points", len(processedData.TemperatureData))
 
 	return processedData, nil
 }
@@ -279,7 +281,7 @@ func resolveDaylight(ctx context.Context, airport Airport, times []string) map[s
 
 		dayLight, err := getDayLightFn(ctx, airport.LatString(), airport.LonString(), t)
 		if err != nil {
-			log.Printf("failed to get daylight for %s: %v", date, err)
+			slog.Error("failed to get daylight", "date", date, "error", err)
 			continue
 		}
 		daylight[date] = dayLight
@@ -385,7 +387,7 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 			// keeps its daytime variant rather than taking the process down.
 			if hourDaylight != nil {
 				if t, err := hourTime(timeStr); err == nil {
-					debug("time: %s", t)
+					slog.Debug("hour", "time", t)
 					if !(t.After(hourDaylight.Parsed.Sunrise) && t.Before(hourDaylight.Parsed.Sunset)) {
 						processWeatherCode += "-night"
 					}
@@ -555,12 +557,12 @@ func getCloudBase(cloudLayers []CloudLayer) *int {
 func calculateVFRProbability(dayLight *SunriseSunsetResponse, cloudBase *int, windSpeed, crosswind, crosswindGusts float64, visibility *float64, tempPoint TemperaturePoint, timeStr string) (probability int, visibilityKnown bool) {
 
 	debugProb := func(reason string, value string) {
-		debug("VFR probability modified, reason %s, value %s", reason, value)
+		slog.Debug("vfr penalty applied", "reason", reason, "value", value)
 	}
 
 	t, err := hourTime(timeStr)
 	if err != nil {
-		log.Printf("failed to parse time %q: %v", timeStr, err)
+		slog.Error("failed to parse time", "time", timeStr, "error", err)
 		return -1, false
 	}
 
@@ -574,7 +576,7 @@ func calculateVFRProbability(dayLight *SunriseSunsetResponse, cloudBase *int, wi
 	probability = 100
 	visibilityKnown = visibility != nil
 
-	debug("calc vfr prob for %s", t.Format(time.RFC822))
+	slog.Debug("scoring vfr probability", "hour", t.Format(time.RFC822))
 
 	// outside civil twilight no go
 	if t.Before(dayLight.Parsed.CivilTwilightBegin) || t.After(dayLight.Parsed.CivilTwilightEnd) {

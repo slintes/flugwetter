@@ -4,15 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
 )
-
-const DEBUG = false
 
 // ProcessedWeatherData represents the data structure sent to the frontend
 type ProcessedWeatherData struct {
@@ -91,7 +89,7 @@ func (rw *responseWriter) WriteHeader(code int) {
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Log the request
-		log.Printf("Request: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+		slog.Info("request", "method", r.Method, "path", r.URL.Path, "from", r.RemoteAddr)
 
 		// Create a custom response writer to capture the status code
 		rw := &responseWriter{
@@ -103,7 +101,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(rw, r)
 
 		// Log the response status
-		debug("Response: %d for %s %s", rw.statusCode, r.Method, r.URL.Path)
+		slog.Debug("response", "status", rw.statusCode, "method", r.Method, "path", r.URL.Path)
 	})
 }
 
@@ -122,9 +120,12 @@ const (
 )
 
 func main() {
+	setupLogging()
+
 	// A broken airport list is fatal: an empty one renders as a working UI with no data.
 	if err := loadAirports(); err != nil {
-		log.Fatalf("Failed to load airports: %v", err)
+		slog.Error("failed to load airports", "error", err)
+		os.Exit(1)
 	}
 
 	// Signal-driven shutdown, so `make restart` drains in-flight requests rather than
@@ -146,9 +147,9 @@ func main() {
 	mux.HandleFunc("GET /api/weather", getWeatherData)
 	if openAIPEnabled() {
 		mux.HandleFunc(tileRoute, serveOpenAIPTile)
-		fmt.Println("openAIP overlay enabled")
+		slog.Info("openAIP overlay enabled")
 	} else {
-		fmt.Printf("openAIP overlay disabled: set %s to enable it\n", openAIPKeyEnv)
+		slog.Info("openAIP overlay disabled", "hint", "set "+openAIPKeyEnv+" to enable it")
 	}
 	// "GET /{$}" matches only the root path; a bare "GET /" would also catch every
 	// unmatched URL, which gorilla's exact-match router did not do.
@@ -164,21 +165,22 @@ func main() {
 	}
 
 	go func() {
-		fmt.Println("Server starting on :8080")
+		slog.Info("server starting", "addr", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("Server failed: %v", err)
+			slog.Error("server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
 	<-ctx.Done()
 	stop() // restore default signal handling, so a second Ctrl-C kills immediately
 
-	log.Println("Shutting down...")
+	slog.Info("shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Graceful shutdown failed: %v", err)
+		slog.Error("graceful shutdown failed", "error", err)
 	}
 }
 
@@ -205,7 +207,7 @@ func getConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewEncoder(w).Encode(config); err != nil {
-		log.Printf("Error encoding config: %v", err)
+		slog.Error("failed to encode config", "error", err)
 		http.Error(w, "Failed to encode config", http.StatusInternalServerError)
 	}
 }
@@ -218,28 +220,21 @@ func getWeatherData(w http.ResponseWriter, r *http.Request) {
 	// another airfield's weather under the wrong name is not something the user can spot.
 	airport, err := lookupAirport(r.URL.Query().Get("airport"))
 	if err != nil {
-		log.Printf("Error resolving airport: %v", err)
+		slog.Warn("rejected unknown airport", "error", err)
 		http.Error(w, "Unknown airport", http.StatusBadRequest)
 		return
 	}
 
 	data, err := GetWeatherData(r.Context(), airport)
 	if err != nil {
-		log.Printf("Error fetching weather data for %s: %v", airport.Identifier, err)
+		slog.Error("failed to fetch weather data", "airport", airport.Identifier, "error", err)
 		http.Error(w, "Failed to fetch weather data", http.StatusInternalServerError)
 		return
 	}
 
 	if err := json.NewEncoder(w).Encode(data); err != nil {
-		log.Printf("Error encoding weather data: %v", err)
+		slog.Error("failed to encode weather data", "error", err)
 		http.Error(w, "Failed to encode weather data", http.StatusInternalServerError)
 		return
-	}
-}
-
-func debug(s string, v ...interface{}) {
-	if DEBUG {
-		fmt.Printf(s, v...)
-		fmt.Println()
 	}
 }

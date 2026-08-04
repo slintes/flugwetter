@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"sort"
@@ -76,7 +77,7 @@ func loadAirports() error {
 			return fmt.Errorf("failed to read %s=%q: %w", airportsFileEnv, path, err)
 		}
 		raw = fileContent
-		fmt.Printf("Loading airports from %s\n", path)
+		slog.Info("loading airports from file", "path", path)
 	}
 
 	var parsed []Airport
@@ -97,7 +98,7 @@ func loadAirports() error {
 	}
 	defaultAirport = parsed[0]
 
-	fmt.Printf("Loaded %d airports, default %s\n", len(airports), defaultAirport.Identifier)
+	slog.Info("loaded airports", "count", len(airports), "default", defaultAirport.Identifier)
 	return nil
 }
 

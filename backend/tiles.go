@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -128,14 +128,14 @@ func serveOpenAIPTile(w http.ResponseWriter, r *http.Request) {
 	url := fmt.Sprintf(openAIPTileURL, z, x, y, openAIPAPIKey())
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil)
 	if err != nil {
-		log.Printf("failed to build openAIP tile request %s: %v", key, err)
+		slog.Error("failed to build openAIP tile request", "tile", key, "error", err)
 		http.Error(w, "Failed to fetch tile", http.StatusBadGateway)
 		return
 	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		log.Printf("failed to fetch openAIP tile %s: %v", key, err)
+		slog.Error("failed to fetch openAIP tile", "tile", key, "error", err)
 		http.Error(w, "Failed to fetch tile", http.StatusBadGateway)
 		return
 	}
@@ -147,14 +147,14 @@ func serveOpenAIPTile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("openAIP returned status %d for tile %s", resp.StatusCode, key)
+		slog.Error("openAIP returned an unexpected status", "status", resp.StatusCode, "tile", key)
 		http.Error(w, "Failed to fetch tile", http.StatusBadGateway)
 		return
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("failed to read openAIP tile %s: %v", key, err)
+		slog.Error("failed to read openAIP tile", "tile", key, "error", err)
 		http.Error(w, "Failed to fetch tile", http.StatusBadGateway)
 		return
 	}
@@ -168,6 +168,6 @@ func writeTile(w http.ResponseWriter, body []byte) {
 	// Let the browser cache too, so panning back over the map costs nothing.
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	if _, err := w.Write(body); err != nil {
-		log.Printf("failed to write tile response: %v", err)
+		slog.Error("failed to write tile response", "error", err)
 	}
 }
