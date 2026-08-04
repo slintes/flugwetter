@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -757,6 +758,25 @@ var (
 	}
 )
 
+// pruneLocked drops entries for dates before yesterday. Daylight data is static per day, so
+// once a date has passed its entry can never be needed again. Without this the map grew by
+// (airports x days) for the life of the process, with nothing ever removed.
+//
+// The caller must hold the write lock. Keys are "lat_lon_YYYY-MM-DD", and an ISO date
+// compares correctly as a string.
+func (c *SunriseCache) pruneLocked(now time.Time) {
+	cutoff := now.AddDate(0, 0, -1).Format("2006-01-02")
+	for key := range c.data {
+		i := strings.LastIndex(key, "_")
+		if i < 0 {
+			continue
+		}
+		if key[i+1:] < cutoff {
+			delete(c.data, key)
+		}
+	}
+}
+
 // getDayLightFn indirects getDayLight so tests can stub the network call.
 var getDayLightFn = getDayLight
 
@@ -792,6 +812,7 @@ func getDayLight(ctx context.Context, latitude, longitude string, t time.Time) (
 	// Cache the result
 	sunriseCache.mutex.Lock()
 	sunriseCache.data[cacheKey] = result
+	sunriseCache.pruneLocked(time.Now())
 	sunriseCache.mutex.Unlock()
 
 	return result, nil

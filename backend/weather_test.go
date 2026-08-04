@@ -448,6 +448,33 @@ func TestGetJSONHonoursContext(t *testing.T) {
 	}
 }
 
+func TestSunriseCachePruneLocked(t *testing.T) {
+	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
+	c := &SunriseCache{data: map[string]*SunriseSunsetResponse{
+		"52.4575_7.1850_2026-07-30": {}, // well past, drop
+		"52.4575_7.1850_2026-08-02": {}, // before yesterday, drop
+		"52.4575_7.1850_2026-08-03": {}, // yesterday, keep
+		"52.4575_7.1850_2026-08-04": {}, // today, keep
+		"52.4575_7.1850_2026-08-09": {}, // forecast tail, keep
+	}}
+
+	c.pruneLocked(now)
+
+	want := []string{
+		"52.4575_7.1850_2026-08-03",
+		"52.4575_7.1850_2026-08-04",
+		"52.4575_7.1850_2026-08-09",
+	}
+	if len(c.data) != len(want) {
+		t.Fatalf("cache holds %d entries, want %d: %v", len(c.data), len(want), c.data)
+	}
+	for _, key := range want {
+		if _, ok := c.data[key]; !ok {
+			t.Errorf("%q was pruned, want kept", key)
+		}
+	}
+}
+
 func TestParseSunriseSunset(t *testing.T) {
 	const good = `{"results":{"sunrise":"2026-08-03T03:30:00+00:00",
 		"sunset":"2026-08-03T19:30:00+00:00",
