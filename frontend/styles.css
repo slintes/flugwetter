@@ -5,10 +5,13 @@
 }
 
 body {
-    font-family: sans-serif;
-    background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+    /* Slate: dark navy shell, with the white chart cards floating on it. Nothing in here
+       touches .chart-container or the charts themselves -- they stay light and unchanged,
+       which is the whole point of the scheme. */
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    background: #0f172a;
     min-height: 100vh;
-    color: #333;
+    color: #e2e8f0;
     padding-left: 50px;
     padding-right: 50px;
 }
@@ -33,7 +36,12 @@ header {
     justify-content: center;
     gap: 6px 20px;
     margin-bottom: 10px;
-    color: white;
+    color: #f1f5f9;
+}
+
+header h2 {
+    font-weight: 650;
+    letter-spacing: -0.01em;
 }
 
 .header-logo {
@@ -64,10 +72,10 @@ header p {
 
 .airport-picker select {
     padding: 6px 10px;
-    border: none;
-    border-radius: 20px;
-    background: white;
-    color: #2d3436;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    background: #1e293b;
+    color: #e2e8f0;
     font-size: 0.95rem;
     /* Wide enough for the longest label — identifier, name and both runways — so the
        collapsed select does not clip it. */
@@ -77,16 +85,19 @@ header p {
 
 .airport-picker button {
     padding: 6px 15px;
-    background: #74b9ff;
-    color: white;
-    border: none;
-    border-radius: 20px;
+    /* Steel: muted enough to sit inside the slate palette rather than on top of it.
+       Shared with the time-range buttons so every control reads as one set. */
+    background: #4a6e9b;
+    color: #eaf1f9;
+    border: 1px solid #5d84b3;
+    border-radius: 8px;
     font-size: 0.95rem;
+    font-weight: 500;
     cursor: pointer;
 }
 
 .airport-picker button:hover:not(:disabled) {
-    background: #0984e3;
+    background: #567ead;
 }
 
 .airport-picker button:disabled,
@@ -99,7 +110,7 @@ header p {
 .map-modal {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.5);
+    background: rgba(2, 6, 23, 0.7);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -113,7 +124,7 @@ header p {
 
 .map-modal-content {
     background: white;
-    border-radius: 15px;
+    border-radius: 12px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     /* Grows with the window in both directions, capped so the dialog does not become
        absurd on a large monitor. The backdrop's padding is what keeps it off the edges. */
@@ -134,8 +145,9 @@ header p {
 }
 
 .map-modal-header h3 {
-    color: #2d3436;
-    font-size: 1.1rem;
+    color: #334155;
+    font-size: 1rem;
+    font-weight: 600;
 }
 
 .map-modal-header button {
@@ -193,7 +205,9 @@ main {
     background: white;
     border-radius: 15px;
     padding: 10px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    /* Tuned for the dark shell: a 10% black shadow is invisible against #0f172a, so the
+       cards read as flat patches instead of floating above it. */
+    box-shadow: 0 8px 24px rgba(2, 6, 23, 0.4);
     transition: transform 0.3s ease;
     min-height: 150px;
     min-width: 0;
@@ -255,10 +269,11 @@ canvas {
     margin-top: 20px;
     margin-bottom: 20px;
     padding: 8px;
-    background: rgba(255,255,255,0.9);
+    background: #1e293b;
+    border: 1px solid #334155;
     border-radius: 10px;
     font-size: 0.9rem;
-    color: #666;
+    color: #94a3b8;
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
@@ -270,17 +285,22 @@ canvas {
 
 .chart-instructions button {
     padding: 5px 15px;
-    background: #74b9ff;
-    color: white;
-    border: none;
-    border-radius: 20px;
+    background: #4a6e9b;
+    color: #eaf1f9;
+    border: 1px solid #5d84b3;
+    border-radius: 8px;
+    font-weight: 500;
     cursor: pointer;
     white-space: nowrap;
     flex-shrink: 0;
 }
 
+.chart-instructions button:hover {
+    background: #567ead;
+}
+
 .chart-instructions strong {
-    color: #2d3436;
+    color: #f1f5f9;
 }
 
 .mobile-hint {
@@ -298,32 +318,32 @@ canvas {
 
 .loading {
     text-align: center;
-    background: rgba(255,255,255,0.9);
-    border-radius: 15px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 12px;
     padding: 40px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
 }
 
 .loading p {
     font-size: 1.2rem;
-    color: #2d3436;
+    color: #e2e8f0;
 }
 
 .error {
     text-align: center;
-    background: #ff7675;
-    color: white;
-    border-radius: 15px;
+    background: #7f1d1d;
+    color: #fee2e2;
+    border: 1px solid #991b1b;
+    border-radius: 12px;
     padding: 30px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
 }
 
 .error button {
-    background: white;
-    color: #ff7675;
+    background: #fff;
+    color: #7f1d1d;
     border: none;
     padding: 10px 20px;
-    border-radius: 25px;
+    border-radius: 8px;
     font-weight: bold;
     cursor: pointer;
     margin-top: 10px;
