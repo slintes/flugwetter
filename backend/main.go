@@ -198,7 +198,6 @@ type ConfigResponse struct {
 
 func getConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	config := ConfigResponse{
 		Airports:       airports,
@@ -214,7 +213,6 @@ func getConfig(w http.ResponseWriter, r *http.Request) {
 
 func getWeatherData(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// An unknown identifier is rejected rather than falling back to the default: serving
 	// another airfield's weather under the wrong name is not something the user can spot.
