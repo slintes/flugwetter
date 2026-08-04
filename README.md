@@ -1,370 +1,115 @@
-# Flugwetter ✈️🌤️
+# Flugwetter ✈️
 
-A comprehensive aviation weather application designed for flight planning and weather analysis. Features interactive synchronized charts displaying detailed meteorological data with traditional aviation symbols and professional weather visualization.
+Aviation weather dashboard for a configurable list of NW-German airfields, built around one
+question: **can I fly from this airfield in the next few days?**
 
-![Aviation Weather Dashboard](https://img.shields.io/badge/Aviation-Weather%20Dashboard-blue?style=for-the-badge&logo=airplane)
+A Go backend fetches and scores forecast data; a vanilla-JS frontend draws four synchronised
+charts with real aviation symbols — wind barbs, cloud symbols, weather icons.
 
-## 🚀 Features
+## The charts
 
-### 📊 Interactive Weather Charts (2x2 Grid Layout)
-- **🌡️ Temperature Chart**: Temperature, dew point, and precipitation with probability-based transparency
-- **☁️ Cloud Chart**: Cloud coverage symbols at multiple altitudes with dynamic transparency
-- **💨 Surface Wind Chart**: Wind barbs and speed/gust lines for low-level winds (10m & 80m)
-- **🌪️ Altitude Wind Chart**: Traditional aviation wind barbs for mid-level winds (600ft - 12,000ft)
+All four share one time axis and pan and zoom together.
 
-### 🎯 Aviation-Specific Features
-- **Traditional Wind Barbs**: Meteorologically accurate wind symbols (calm, half-barb, full-barb, pennant)
-- **Aviation Units**: Heights in feet, wind speeds in knots
-- **Pressure Level Data**: Uses hPa levels with geopotential height conversion
-- **Flight Planning Focus**: Optimized altitude ranges for practical aviation use
+| Chart | Shows |
+|---|---|
+| **VFR probability** | A 0–100 score per hour with a weather icon. The headline. |
+| **Temperature** | Temperature, dew point, and precipitation with probability-scaled bars. |
+| **Clouds & visibility** | Cloud layers by height with coverage, cloud base as a flight level, visibility in km. |
+| **Wind** | Wind barbs by altitude, plus 10m speed, gusts and the crosswind component. |
 
-### 🖱️ Interactive Controls
-- **Synchronized Pan/Zoom**: All 4 charts move together for consistent analysis
-- **Manual Controls**: Custom pan/zoom implementation using canvas events
-- **Time Navigation**: 3-hour intervals with date markers at midnight
-- **Responsive Design**: 2x2 grid on desktop, single column on mobile
+The VFR score starts at 100 and subtracts penalties for cloud base, visibility, total wind,
+crosswind and its gusts, precipitation, and heat. It returns 0 outside civil twilight, below
+a 1000ft ceiling, or under 5km visibility, and `-1` — rendered as "no data", not as bad
+weather — when an hour cannot be scored at all. Every rule lives in one function on purpose;
+see `internal/server/weather.go`.
 
-### ⚡ Performance & Reliability
-- **Smart Caching**: 15-minute server-side caching for optimal API usage
-- **Real-time Updates**: Automatic data refresh with visual indicators
-- **Error Handling**: Graceful error recovery with retry functionality
-- **Mobile Optimized**: Full responsive design for all device sizes
+Crosswind is computed against **true** runway headings taken from OpenStreetMap geometry
+rather than the published magnetic designators, and a multi-runway field is scored on its
+best runway.
 
-## 🏗️ Architecture
-
-### Backend (Go)
-```
-🔧 HTTP Server (gorilla/mux)
-📡 Open-Meteo API Integration
-💾 15-minute Smart Caching
-🔄 Data Processing & Conversion
-📊 Aviation Unit Conversion (m→ft)
-🌐 Static File Serving
-```
-
-### Frontend (JavaScript/HTML/CSS)
-```
-📈 Chart.js Interactive Visualization
-🎨 Custom Weather Symbol Plugins
-🖱️ Manual Pan/Zoom Implementation
-📱 Responsive Grid Layout
-⚡ Async Data Loading
-```
-
-## 🛠️ Installation & Setup
-
-### Prerequisites
-- **Go**: Version 1.21 or higher
-- **Internet**: For Open-Meteo API access
-- **Browser**: Modern browser with Canvas support
-
-### Quick Start
-
-1. **Clone the repository:**
-```bash
-git clone <repository-url>
-cd flugwetter
-```
-
-2. **Install dependencies:**
-```bash
-cd backend
-go mod tidy
-```
-
-3. **Start the server:**
-```bash
-go run .
-```
-
-4. **Open in browser:**
-```
-http://localhost:8080
-```
-
-### 🐳 Docker Setup (Optional)
-```bash
-# Build image
-docker build -t flugwetter .
-
-# Run container
-docker run -p 8080:8080 flugwetter
-```
-
-## 📡 API Reference
-
-### Configuration Endpoint
-```http
-GET /api/config
-```
-Returns the airport list in display order, the default airport identifier, and whether the
-openAIP overlay is available.
-
-### Weather Data Endpoint
-```http
-GET /api/weather?airport=EDWN
-```
-Omitting `airport` serves the default field; an unknown identifier is a `400` rather than a
-silent fallback.
-
-**Response Structure:**
-```json
-{
-  "temperature_data": [
-    {
-      "time": "2024-01-01T00:00",
-      "temperature": 10.5,
-      "dew_point": 8.2,
-      "precipitation": 0.3,
-      "precipitation_probability": 75
-    }
-  ],
-  "cloud_data": [
-    {
-      "time": "2024-01-01T00:00",
-      "cloud_layers": [
-        {
-          "height_feet": 2500,
-          "coverage": 85,
-          "symbol": "☁"
-        }
-      ]
-    }
-  ],
-  "surface_wind_data": [
-    {
-      "time": "2024-01-01T00:00",
-      "wind_speed_10m": 12.5,
-      "wind_gusts_10m": 18.2,
-      "wind_layers": [
-        {
-          "height_feet": 33,
-          "speed": 12.5,
-          "direction": 240,
-          "symbol": "barb"
-        }
-      ]
-    }
-  ],
-  "wind_data": [
-    {
-      "time": "2024-01-01T00:00",
-      "wind_layers": [
-        {
-          "height_feet": 3280,
-          "speed": 25.8,
-          "direction": 270,
-          "symbol": "barb"
-        }
-      ]
-    }
-  ]
-}
-```
-
-### Map Tiles
-```http
-GET /api/tiles/openaip/{z}/{x}/{y}.png
-```
-openAIP proxy, registered only when `OPENAIP_API_KEY` is set. Tiles are cached server-side.
-
-### Static Assets
-```http
-GET /static/{file}    # CSS, JavaScript, images
-GET /              # Main application page
-```
-
-## ⚙️ Configuration
-
-### Airports
-The selectable airfields live in `backend/airports.json` (embedded into the binary). Pick one
-from the dropdown, or press **Map…** for an openAIP map of north-west Germany and click a
-marker. The choice is remembered per browser and reflected in the URL (`?airport=EDLT`), so a
-link opens on the right field.
-
-Adding an airfield means one entry in `backend/airports.json` — display order (pinned first,
-then north to south) is computed at startup. `runway_headings` are **true** headings for both
-ends of every runway; the published designators are magnetic and rounded. See
-`design-airport-selection.md`.
-
-Set `FLUGWETTER_AIRPORTS_FILE=/path/to/airports.json` to replace the list without a rebuild.
-
-### openAIP overlay
-The map picker draws airspaces and airfields from openAIP, which needs a free API key from
-[accounts.openaip.net](https://accounts.openaip.net):
+## Running it
 
 ```bash
-export OPENAIP_API_KEY=your-key
+make dev            # frontend served from disk: edit CSS/JS and reload
+go run .            # frontend served from the embedded copy
+make test           # Go and frontend suites
+make hooks          # install the pre-commit hook (recommended, once)
 ```
 
-Without it the map still works, with the OpenStreetMap base layer alone. The key stays on the
-server — tiles are proxied and cached through `/api/tiles/openaip/`. openAIP data is
-CC BY-NC 4.0 (attribution shown on the map, non-commercial use only).
+Then <http://localhost:8080>.
 
-### Chart Altitude Ranges
-```javascript
-// Configurable in frontend/app.js
-cloudChart: 100ft - 24,000ft     (logarithmic)
-surfaceWind: 0ft - 300ft         (linear)
-altitudeWind: 600ft - 12,000ft   (logarithmic)
-```
+The binary is self-contained — the frontend, the airport list and the timezone database are
+all compiled in — so it runs from any directory.
 
-### Cache Duration
-```go
-// Modify in backend/weather.go
-cacheDuration := 15 * time.Minute
-```
+### Configuration
 
-## 🌐 Data Source
+| Variable | Effect |
+|---|---|
+| `OPENAIP_API_KEY` | Enables the openAIP airspace overlay on the map picker. Without it the map falls back to OpenStreetMap alone. |
+| `FLUGWETTER_AIRPORTS_FILE` | Replaces the built-in airport list. |
+| `FLUGWETTER_LOG_LEVEL` | `debug` \| `info` \| `warn` \| `error`. `debug` traces every VFR scoring decision. |
+| `FLUGWETTER_DEV` | Serve the frontend from disk instead of the embedded copy. |
 
-**[Open-Meteo API](https://open-meteo.com/)**
-- ✅ High-resolution ICON model forecasts
-- ✅ No API key required
-- ✅ 96-hour forecast range
-- ✅ Pressure level data (1000hPa - 30hPa)
-- ✅ Geopotential height conversion
-- ✅ Wind speeds in knots (aviation standard)
-
-**Location**: whichever airfield is selected; see `backend/airports.json`.
-
-## 📁 Project Structure
+## Layout
 
 ```
-flugwetter/
-├── 📋 specs.md                 # Detailed specifications
-├── 📖 README.md               # This documentation
-├── 🔧 backend/                # Go server
-│   ├── 🏠 main.go             # HTTP server & data structures
-│   ├── 🌡️ weather.go          # API client & data processing
-│   └── 📦 go.mod              # Go dependencies
-└── 🌐 frontend/               # Web interface
-    ├── 🏠 index.html          # Main page structure
-    ├── 🎨 styles.css          # Responsive styling
-    └── ⚡ app.js              # Charts & interactions
+main.go                     entrypoint; -healthcheck probes a running instance
+internal/server/            HTTP surface, weather processing, caches, VFR scoring
+internal/web/               embeds and serves the frontend
+internal/web/frontend/      the assets: index.html, styles.css, js/, icons/, vendor/
+internal/web/jstest/        frontend tests, kept out of the embedded tree
 ```
 
-## 🎯 Usage Guide
+`internal/web` is a separate package because a `go:embed` pattern cannot leave its own
+package directory, so the assets have to live under whichever package embeds them. The JS
+tests sit outside `frontend/` for the same reason: that directory is embedded wholesale.
 
-### Navigation
-- **Pan**: Click and drag on any chart to pan horizontally
-- **Zoom**: Use mouse wheel to zoom in/out on time range
-- **Sync**: All charts move together automatically
-- **Reset**: Double-click any chart to reset zoom
+## Data sources
 
-### Reading Weather Data
+- **[Open-Meteo](https://open-meteo.com/)** — hourly forecast, `icon_seamless`, 18 pressure
+  levels. Cached 15 minutes per airport; when it is unreachable the last good payload is
+  served, flagged `stale`, and the page says how old it is.
+- **[sunrise-sunset.org](https://sunrise-sunset.org/)** — daylight and civil twilight, one
+  lookup per date.
+- **[OpenStreetMap](https://www.openstreetmap.org/)** and optionally
+  **[openAIP](https://www.openaip.net/)** — map picker tiles. openAIP is proxied so the API
+  key never reaches the browser.
 
-#### 🌡️ Temperature Chart
-- **Red Line**: 2m Temperature (°C)
-- **Green Line**: 2m Dew Point (°C) 
-- **Blue Area**: Precipitation (mm) with probability-based transparency
-- **Right Scale**: Precipitation amount (0-10mm)
+Browser libraries are vendored rather than loaded from a CDN, so the dashboard itself makes
+no third-party requests at all.
 
-#### ☁️ Cloud Chart
-- **☁ Symbols**: Cloud coverage at various altitudes
-- **Transparency**: 0% = invisible, 100% = opaque
-- **Y-Axis**: Height in feet (logarithmic scale)
+## Deployment
 
-#### 💨 Surface Wind Chart
-- **Wind Barbs**: Traditional aviation symbols at 33ft & 262ft
-- **Green Line**: Wind speed at 10m
-- **Red Dashed**: Wind gusts at 10m
-- **Right Scale**: Wind speed in knots
-
-#### 🌪️ Altitude Wind Chart
-- **Wind Barbs**: Mid-level winds (600ft - 12,000ft)
-- **Barb Direction**: Points FROM wind direction
-- **Barb Symbols**: Calm (○), 5kn (╱), 10kn (│), 50kn (▲)
-
-## 🔧 Development
-
-### Backend Development
 ```bash
-cd backend
-go run . -dev          # Development mode
-go build              # Build executable
-go test               # Run tests
+make build          # OCI image, tagged :<commit> and :latest
+make push
+make restart        # replays the pod on the server
+make deploy         # all three, in order
 ```
 
-### Frontend Development
+The image is `scratch` plus a CA bundle: two files, ~10MB, running as uid 65532.
+`/api/config` reports the commit it was built from, so what is deployed can be checked
+rather than inferred from a tag that always says `latest`. Rolling back is re-tagging an
+older commit as `latest`.
+
+The healthcheck is attached at run time rather than baked into the image — an image
+`HEALTHCHECK` is a Docker-schema field with no OCI equivalent, and podman drops it:
+
 ```bash
-# Serve static files during development
-cd frontend
-python -m http.server 8000
-# Or use any static file server
+podman run --health-cmd '["/flugwetter","-healthcheck"]' ...
 ```
 
-### Custom Chart Plugins
-The application includes custom Chart.js plugins for:
-- **Cloud Symbols**: Dynamic transparency rendering
-- **Wind Barbs**: Traditional aviation wind symbols
-- **Chart Clipping**: Symbol boundary management
+JSON array form matters. A bare string is run through `/bin/sh`, which a `scratch` image
+does not have, so every probe would fail while the server ran perfectly.
 
-### Adding New Features
-1. **Backend**: Extend data structures in `main.go`
-2. **API Processing**: Add logic in `weather.go`
-3. **Frontend**: Create new chart in `app.js`
-4. **Styling**: Add responsive CSS in `styles.css`
+## Documentation
 
-## 🤝 Contributing
+- **`CLAUDE.md`** — architecture and the non-obvious constraints that are easy to break.
+  Worth reading before changing the charts.
+- **`design-airport-selection.md`** — why airport selection works the way it does.
+- **`internal/web/frontend/vendor/README.md`** — vendored library versions and how to update.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+## Licence
 
-### Development Guidelines
-- Follow Go best practices for backend code
-- Use semantic commit messages
-- Add tests for new functionality
-- Ensure responsive design for frontend changes
-- Document new features in specs.md
-
-## 🚀 Deployment
-
-### Production Build
-```bash
-# Build optimized backend
-cd backend
-CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o flugwetter .
-
-# Serve with reverse proxy (nginx/caddy)
-./flugwetter
-```
-
-### Environment Variables
-```bash
-export PORT=8080                    # Server port
-export CACHE_DURATION=15m           # Cache duration
-export API_TIMEOUT=30s              # API request timeout
-```
-
-## 📊 Performance
-
-- **API Caching**: 15-minute cache reduces API calls by ~95%
-- **Data Filtering**: Backend filters irrelevant altitude data
-- **Symbol Rendering**: Optimized canvas drawing with clipping
-- **Responsive Design**: Efficient CSS Grid with mobile optimization
-- **Chart Synchronization**: Minimal overhead pan/zoom implementation
-
-## 🎯 Aviation Use Cases
-
-- **Pre-flight Planning**: Comprehensive weather overview
-- **Route Planning**: Wind data for fuel calculations
-- **Weather Analysis**: Cloud layers and precipitation timing
-- **Safety Assessment**: Wind shear and turbulence indicators
-- **Training**: Educational weather visualization
-
-## 🙏 Acknowledgments
-
-This project was developed with the assistance of **Cursor AI**, an AI-powered code editor that helped accelerate development, refine features, and ensure best practices throughout the implementation of this aviation weather visualization platform.
-
-## 📄 License
-
-This project is open source and available under the [MIT License](LICENSE).
-
----
-
-**Built with ❤️ for the aviation community** ✈️
-
-*For detailed technical specifications, see [specs.md](specs.md)* 
+MIT — see `LICENSE`. Weather icons are Visual Crossing's 2nd Set (Color), LGPL; see
+`internal/web/frontend/icons/LICENSE`.

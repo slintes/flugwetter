@@ -9,32 +9,42 @@ Aviation weather dashboard for a configurable list of NW-German airfields (defau
 ## Build & Run
 
 ```bash
-cd backend && go run .        # must run from backend/ — see gotcha below
+make dev                      # FLUGWETTER_DEV=1 go run . — frontend served from disk
+go run .                      # frontend served from the embedded copy
+make test                     # gofmt, go vet, go test, node --test
+make hooks                    # install the pre-commit hook (runs the same checks)
 # http://localhost:8080
 
-go vet ./...                  # run before declaring Go work done
-go build -o flugwetter .
-
-make build                    # podman build quay.io/slintes/flugwetter
-make run                      # podman run -p 8080:8080
+make build                    # OCI image, tagged :<commit> and :latest
+make run                      # podman run, with the healthcheck attached
 make push
 ```
 
-Optional env: `OPENAIP_API_KEY` (enables the openAIP overlay on the map picker), `FLUGWETTER_AIRPORTS_FILE` (replaces the embedded airport list).
+Env: `OPENAIP_API_KEY` (openAIP overlay on the map picker), `FLUGWETTER_AIRPORTS_FILE` (replaces the embedded airport list), `FLUGWETTER_LOG_LEVEL` (`debug` traces every VFR scoring decision), `FLUGWETTER_DEV` (serve the frontend from disk).
 
-`go test ./...` covers VFR scoring, sunrise parsing, airport config and the tile proxy. No frontend build step — JS/CSS served as-is; browser reload picks up changes, backend restart only needed for Go changes.
+**The binary is self-contained** and runs from any directory: the frontend, the airport list and the timezone database are all compiled in. There is no build step for the frontend — under `make dev` a reload picks up JS/CSS edits; without it the embedded copy is served and a rebuild is needed.
 
-**Gotcha:** `main.go` serves `../frontend/index.html` and `../frontend/` via relative paths, so the server only works when the CWD is `backend/`. The Dockerfile mirrors this (`WORKDIR /app/backend`).
+## Layout
+
+```
+main.go                     entrypoint; -healthcheck probes a running instance
+internal/server/            HTTP surface, weather processing, caches, VFR scoring
+internal/web/               embeds and serves the frontend
+internal/web/frontend/      index.html, styles.css, js/, icons/, vendor/
+internal/web/jstest/        frontend tests, deliberately outside the embedded tree
+```
+
+`internal/web` is its own package because a `go:embed` pattern cannot leave its own package directory — the assets must live under whichever package embeds them. The JS tests sit outside `frontend/` for the same reason: `//go:embed all:frontend` takes everything, and it was compiling the test files into the binary and serving them.
 
 ## Architecture
 
-**`backend/main.go`** — mux router (`/`, `/api/config`, `/api/weather`, tile proxy, `/static/*` → `../frontend/`), logging middleware, and all wire-format structs (`ProcessedWeatherData` and children). Adding a field to the API means editing these structs plus the producer in `weather.go` and the consumer in `app.js`.
+**`internal/server/server.go`** — stdlib `http.ServeMux` (`/`, `/api/config`, `/api/weather`, tile proxy, `/static/*`), logging/gzip/security middleware, and all wire-format structs (`ProcessedWeatherData` and children). Adding a field to the API means editing these structs plus the producer in `weather.go` and the consumer in `js/api.js`.
 
-**`backend/airports.go` + `backend/airports.json`** — the selectable airfields, embedded via `go:embed`. `Airport` carries true runway headings (both ends) and `crosswindComponent`. Display order is computed at startup (pinned entry first, then latitude descending), so file order is irrelevant. A malformed list is fatal at startup. See `design-airport-selection.md` for the decisions.
+**`internal/server/airports.go` + `airports.json`** — the selectable airfields, embedded via `go:embed`. `Airport` carries true runway headings (both ends) and `crosswindComponent`. Display order is computed at startup (pinned entry first, then latitude descending), so file order is irrelevant. A malformed list is fatal at startup. See `design-airport-selection.md` for the decisions.
 
-**`backend/tiles.go`** — openAIP raster tile proxy, keeping `OPENAIP_API_KEY` server-side and caching tiles (2000 entries, 24h) because openAIP rate-limits and asks clients to cache. Without the key the route is not registered and the map falls back to OSM alone.
+**`internal/server/tiles.go`** — openAIP raster tile proxy, keeping `OPENAIP_API_KEY` server-side and caching tiles (2000 entries, 24h) because openAIP rate-limits and asks clients to cache. Without the key the route is not registered and the map falls back to OSM alone.
 
-**`backend/weather.go`** — everything else: API URL construction, fetching, caching, processing, VFR scoring. Everything is per-airport: `GetWeatherData`, `processWeatherData` and `calculateVFRProbability` all take an `Airport`, and `cache` holds one entry per identifier. Only the default airport is warmed at startup.
+**`internal/server/weather.go`** — everything else: API URL construction, fetching, caching, processing, VFR scoring. Everything is per-airport: `GetWeatherData`, `processWeatherData` and `calculateVFRProbability` all take an `Airport`, and `cache` holds one entry per identifier. Only the default airport is warmed at startup.
 
 - Two upstream APIs: Open-Meteo (`models=icon_seamless`, `timezone=GMT`, `wind_speed_unit=kn`, hourly + 18 pressure levels) and sunrise-sunset.org (daylight/civil twilight).
 - Two independent caches: `cache` (whole processed payload, 15 min TTL, `sync.RWMutex`, double-checked in `fetchAndCacheWeatherData`, warmed on startup in `main`) and `sunriseCache` (per lat/lon/date, unbounded, no TTL — daylight data is static per day).
@@ -44,30 +54,43 @@ Optional env: `OPENAIP_API_KEY` (enables the openAIP overlay on the map picker),
 - `Airport.crosswindComponent` (in `airports.go`) computes `|speed × sin(dir − runwayHeading)|`, taking the **minimum** over that airport's `runway_headings` so a multi-runway field reports the crosswind after picking the best runway. Those headings are **true**, taken from OpenStreetMap runway geometry rather than converted from the published (magnetic, 10°-rounded) designators — EDWN's 05/23 is true 55/235, not 50/230. Since crosswind and total wind are both penalized, the total-wind multipliers are deliberately mild (`>10kt: −1×`, `>15kt: −1.5×`, `>20kt: −2×` speed).
 - Weather codes are emitted as strings with a `-night` suffix outside sunrise..sunset (e.g. `"3-night"`), which is what the icon lookup keys on.
 
-**`frontend/app.js`** (~1900 lines, no modules) — four globals `vfrChart` / `temperatureChart` / `cloudChart` / `windChart`, an init function per chart, `updateCharts(data)` for the API response, and hand-rolled pan/zoom.
+**`internal/web/frontend/js/`** — nine native ES modules, no bundler and no build step. `main.js` bootstraps; `charts.js` owns the four instances behind a mutable `charts` registry (`charts.vfr`, `.temperature`, `.cloud`, `.wind`) that `api.js` and `panzoom.js` read; `plugins.js` holds every drawing plugin and is imported for its registration side effect before any chart is constructed.
 
-- All aviation rendering lives in custom Chart.js plugins registered inline: `vfrText` (colored probability + weather icon), `cloudSymbols` (transparency = coverage %), `windBarbs` (calm circle / half barb 5kt / full barb 10kt / pennant 50kt, pointing FROM the wind), `midnightDateLabels`, plus `cloudGridLines` (2000ft) and `windGridLines` (10kt) reference lines. Chart.js draws no symbols itself — changing symbol behaviour means editing plugin `afterDatasetsDraw` hooks, not dataset config.
-- Wind chart datasets are positional — `[0]` wind layers (barbs), `[1]` speed 10m, `[2]` gusts 10m, `[3]` crosswind 10m, `[4]` crosswind gusts 10m — and `updateCharts` assigns to those indices directly. Inserting a dataset means renumbering the assignments. Speed/gusts are `#e17055`, crosswind `#ff8c00`; gust variants are the dashed member of each pair.
+- **Two dependency rules.** `airports.js` must not import `api.js` — selecting an airport triggers a reload and the loader reads the picker's state, so `main.js` passes the reload in rather than letting the two import each other. And `viewport.js`, `barbs.js` and `time.js` must not import Chart.js or touch the DOM at load time, because that is what lets `internal/web/jstest/` run them under `node --test`; the `responsiveAxes` plugin lives in `plugins.js` for exactly this reason.
+
+- All aviation rendering lives in custom Chart.js plugins in `plugins.js`: `vfrText` (colored probability + weather icon), `cloudSymbols` (transparency = coverage %), `windBarbs` (calm circle / half barb 5kt / full barb 10kt / pennant 50kt, pointing FROM the wind), `midnightDateLabels`, plus `cloudGridLines` (2000ft) and `windGridLines` (10kt) reference lines. Chart.js draws no symbols itself — changing symbol behaviour means editing plugin `afterDatasetsDraw` hooks, not dataset config.
+- Wind chart datasets are positional — `[0]` wind layers (barbs), `[1]` speed 10m, `[2]` gusts 10m, `[3]` crosswind 10m, `[4]` crosswind gusts 10m — and `updateCharts` in `api.js` assigns to those indices directly. Inserting a dataset means renumbering the assignments. Speed/gusts are `#e17055`, crosswind `#ff8c00`; gust variants are the dashed member of each pair.
 - Pan/zoom is **not** chartjs-plugin-zoom: `addManualPanZoom` attaches raw mouse/wheel/touch listeners, and `syncAllCharts`/`syncManualPan` push the resulting time range to the other three charts. Any new chart must be added to the sync list or it will drift.
-- Touch gestures are split by axis, and it takes both halves: `touch-action: pan-y` on the canvas (styles.css) gives vertical swipes back to the browser, and `addManualPanZoom` locks each gesture to one axis after `TOUCH_AXIS_LOCK_PX` so a diagonal swipe does not scroll the page and pan time at once. Without the CSS the charts swallow the only way to scroll a phone; without the lock, diagonals do both. `preventDefault` is guarded by `e.cancelable` — once the browser owns the scroll the event is not cancelable — and `touchcancel` must reset the same state as `touchend`, because a gesture the browser takes over never reaches `touchend`.
-- Chart.js, the date-fns adapter and Leaflet load from jsDelivr CDN in `index.html`, version-pinned; there is no local vendoring or offline fallback.
+- Touch gestures are split by axis, and it takes both halves: `touch-action: pan-y` on the canvas (`styles.css`) gives vertical swipes back to the browser, and `addManualPanZoom` locks each gesture to one axis after `TOUCH_AXIS_LOCK_PX` so a diagonal swipe does not scroll the page and pan time at once. Without the CSS the charts swallow the only way to scroll a phone; without the lock, diagonals do both. `preventDefault` is guarded by `e.cancelable` — once the browser owns the scroll the event is not cancelable — and `touchcancel` must reset the same state as `touchend`, because a gesture the browser takes over never reaches `touchend`.
+- Chart.js, the date-fns adapter and Leaflet are **vendored** in `frontend/vendor/` and served same-origin — not from a CDN. That is what makes the page work on a captive portal and what makes the strict CSP possible; see `vendor/README.md` for versions and how to update. Loading the dashboard makes no third-party request at all; the OpenStreetMap tiles are the only cross-origin traffic, and only once the map modal is opened.
+- **`index.html` is a Go template**, rendered by `internal/web`. `{{asset "js/main.js"}}` stamps a content hash onto each URL and `{{.ImportMap}}` emits the generated import map. Hashing the entry point alone would not work: a module's own `import './api.js'` resolves against the module's URL and does not inherit the query string, so every inner import would be unversioned. The import map remaps the resolved URLs, which keeps hashes out of the module sources entirely.
+- The inline import map carries a per-response CSP nonce, and it is the only inline script on the page — the time-range buttons use `data-hours` and `addEventListener` in `main.js`, not `onclick=`. If the nonce in the header and the one in the page ever disagree, the browser drops the import map and nothing loads, which is why `indexHandler` produces both together.
 - **All four charts share one plot area, and it is load-bearing.** Chart.js sizes a y axis to its own tick labels, which put the four time axes up to 72px out of step. Every visible y scale therefore pins its width via `afterFit: pinAxisWidth('left'|'right')`, and the VFR chart — which has no visible axis — reserves the same space through `layout.padding`. A new chart must do the same or it will not line up.
 - Equal plot areas are necessary but not sufficient: the shared `xAxisConfig` also pins `offset: false` on the time scale itself. The temperature chart is the only one with a bar dataset (precipitation), and Chart.js's `BarController.overrides` turns `offset` on for the index scale, which makes `TimeScale.initOffsets()` reserve half a slot at each end — the same timestamp then lands 26px further right and 5% closer together than on the other three. `grid.offset` is a different option and does not prevent this.
 - Axis widths, the VFR icon/label size and the axis titles all switch at `NARROW_VIEWPORT` (600px): `82/81` → `54/52`, `36px/24px` → `20px/14px`, titles hidden. On a 360px phone the wide axes left a 157px plot, too narrow for even one hour. The switch is applied by the `responsiveAxes` plugin's `beforeLayout`, so a resize across the breakpoint re-pins everything with no resize handler; both widths must come from the same `axisWidths()` call or the charts drift apart again.
-- The initial time range is computed, not fixed: `initialZoomHours()` divides the laid-out plot width by `vfrSlotWidth()` (icon box vs the widest probability label, measured with `measureText` in the plugin's own font) and subtracts the 3 history hours `resetChartZoom` adds. It runs once, from `updateCharts`, guarded by `initialZoomApplied` — airport switches and the 15-minute refresh must not reset the user's zoom.
+- The initial time range is computed, not fixed: `initialZoomHours()` divides the laid-out plot width by `vfrSlotWidth()` (icon box vs the widest probability label, measured with `measureText` in the plugin's own font) and subtracts the 3 history hours `resetChartZoom` adds. `applyInitialZoomOnce()` guards it — airport switches and the 15-minute refresh must not reset the user's zoom.
+- The refresh is both a 15-minute interval and a `visibilitychange` handler. A background tab's timers are throttled and a sleeping phone's do not run at all, so the interval alone could leave a stale forecast on screen at exactly the moment it is looked at and trusted.
 - Airport selection (`initAirportPicker` and below) is independent of the charts: it fetches `/api/config`, fills the dropdown, and drives a lazily-created Leaflet modal whose markers are the configured airfields only. Selection resolves `?airport=` → localStorage → backend default, and `loadWeatherData` appends the current identifier to the query.
 - The Leaflet map needs `center`/`zoom` at construction: a layer's `addTo()` reads the map's pixel origin, which does not exist until the view is set, and `fitBounds` afterwards is too late. Wheel zoom is deliberately damped (`wheelPxPerZoomLevel: 200`, `zoomSnap: 0.25`) — the default 60px/level is two whole levels per mouse notch. Marker detail is opened on `mouseover`, not `bindPopup`, because click both selects the airport and closes the modal.
 
-**`frontend/styles.css`** — dark slate shell (`#0f172a`) with the white chart cards left light on purpose; the charts are the one thing that must stay maximally legible. Controls share one steel accent (`#4a6e9b`). `.chart-container` is otherwise untouched by the theme apart from a shadow tuned for the dark background.
+**`internal/web/frontend/styles.css`** — dark slate shell (`#0f172a`) with the white chart cards left light on purpose; the charts are the one thing that must stay maximally legible. Controls share one steel accent (`#4a6e9b`). `.chart-container` is otherwise untouched by the theme apart from a shadow tuned for the dark background.
 
-**`frontend/weather-icons.js`** — WMO code → SVG filename map (including `-night` variants), files in `frontend/icons/` (Visual Crossing 2nd Set Color, LGPL). Unknown codes fall back to `notavailable.svg`.
+**`internal/web/frontend/js/weather-icons.js`** — WMO code → SVG filename map (including `-night` variants), files in `internal/web/frontend/icons/` (Visual Crossing 2nd Set Color, LGPL). Unknown codes fall back to `notavailable.svg`.
 
 ## Units & conventions
 
 Heights in feet, wind in knots, visibility converted to km, cloud base in flight levels. Y-axes: cloud chart 200–12,000 ft log, wind chart 20–10,000 ft log.
 
+## Verification
+
+`go test ./...` covers the VFR ladder, the Open-Meteo decode path (a golden fixture in `internal/server/testdata/`, with a reflection test asserting every hourly field still binds — a renamed upstream field otherwise becomes a silent zero), both HTTP handlers, the caches and the tile proxy. `node --test 'internal/web/jstest/*.test.js'` covers the pure frontend logic. `make test` runs both; `make hooks` installs a pre-commit hook that does the same.
+
+Chart behaviour cannot be tested that way. Changes to the charts should be checked in a browser: all four plot areas aligned, pan and zoom syncing across all four, the map modal, and no CSP violations in the console.
+
+## Known discrepancy
+
+This file used to state that the VFR score returns 0 when crosswind ≥ 20kt. **It does not.** `calculateVFRProbability` has exactly three hard-zero returns — outside civil twilight, cloud base below FL10, and visibility below 5km. Crosswind only ever accumulates a penalty, so 20kn straight across the runway scores 15, not 0. `TestCalculateVFRProbability_CrosswindHasNoHardNoGo` pins the actual behaviour. Whether the rule should exist is an open question for the maintainer; it was left alone rather than changed as a side effect of writing tests.
+
 ## Docs
 
-`design-airport-selection.md` is current and records why airport selection works the way it does.
-
-`specs.md`, `README.md` and `frontend/README.md` are partly stale — they still describe a separate "surface wind" chart and omit the VFR chart. Trust the code; update these docs when touching the areas they describe.
+`design-airport-selection.md` records why airport selection works the way it does. `README.md` and `internal/web/frontend/js/README.md` are current.
