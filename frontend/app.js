@@ -1788,8 +1788,7 @@ function updateCharts(data) {
                         x: timeValue,
                         y: layer.height_feet,
                         speed: layer.speed,
-                        direction: layer.direction,
-                        symbol: layer.symbol
+                        direction: layer.direction
                     });
                 });
             }

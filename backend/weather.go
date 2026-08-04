@@ -514,31 +514,16 @@ func processWindLayers(apiResponse *WeatherAPIResponse, timeIndex int) []WindLay
 
 			// Only include if we have valid data and height is within range (600-12000 feet)
 			if speed > 0 && heightFeet <= 12000 {
-				speedKnots := speed
-
-				symbol := getWindSymbol(speedKnots, direction)
-
 				layers = append(layers, WindLayer{
 					HeightFeet: heightFeet,
-					Speed:      speedKnots,
+					Speed:      speed,
 					Direction:  direction,
-					Symbol:     symbol,
 				})
 			}
 		}
 	}
 
 	return layers
-}
-
-// getWindSymbol returns wind barb type based on speed (direction handled in frontend)
-func getWindSymbol(speedKnots float64, direction int) string {
-	// Return barb type based on wind speed for frontend rendering
-	if speedKnots < 3 {
-		return "calm"
-	}
-	// Return speed for barb calculation in frontend
-	return "barb"
 }
 
 // getCloudBase calculates the cloud base

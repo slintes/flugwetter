@@ -60,7 +60,10 @@ type WindLayer struct {
 	HeightFeet int     `json:"height_feet"`
 	Speed      float64 `json:"speed"`
 	Direction  int     `json:"direction"`
-	Symbol     string  `json:"symbol"`
+	// No barb-type field here: the frontend's drawWindBarb decides calm-versus-barb from
+	// Speed itself. A server-side copy of that decision was carried on every layer of
+	// every hour and never read, leaving two 3kt thresholds of which only the JS one had
+	// any effect.
 }
 
 type VfrPoint struct {
