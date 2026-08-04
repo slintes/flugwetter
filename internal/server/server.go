@@ -165,11 +165,11 @@ func Run() error {
 	}
 	// "GET /{$}" matches only the root path; a bare "GET /" would also catch every
 	// unmatched URL, which gorilla's exact-match router did not do.
-	mux.Handle("GET /{$}", assets.IndexHandler())
+	mux.Handle("GET /{$}", indexHandler(assets))
 
 	srv := &http.Server{
 		Addr:              ":8080",
-		Handler:           loggingMiddleware(gzipMiddleware(mux)),
+		Handler:           loggingMiddleware(securityHeaders(gzipMiddleware(mux))),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,

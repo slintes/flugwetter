@@ -8,6 +8,7 @@
 package web
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
@@ -50,6 +51,11 @@ const (
 	// another.
 	hashLength = 8
 
+	// noncePlaceholder stands in for the CSP nonce in the rendered page. Rendering once and
+	// substituting per request keeps the template execution off the request path; the token
+	// is deliberately unlikely to occur in real markup.
+	noncePlaceholder = "__FLUGWETTER_CSP_NONCE__"
+
 	// immutableMaxAge is a year, the practical maximum. Safe only because the URL carries
 	// a content hash, so a changed file is a different URL rather than a stale cache entry.
 	immutableMaxAge = 365 * 24 * time.Hour
@@ -71,7 +77,8 @@ type Assets struct {
 	// its SHA-256. Empty in dev mode, where nothing is versioned.
 	hashes map[string]string
 	// index is the rendered HTML page, with hashed URLs and the import map already in it.
-	// Rebuilt per request in dev mode.
+	// The CSP nonce is left as noncePlaceholder and substituted per request, so the
+	// template only has to be executed once. Re-rendered per request in dev mode.
 	index []byte
 }
 
@@ -169,8 +176,11 @@ func (a *Assets) moduleImportMap() (template.HTML, error) {
 		return "", fmt.Errorf("failed to build the import map: %w", err)
 	}
 
-	// The content is generated here from paths we control, never from request input.
-	return template.HTML(`<script type="importmap">` + string(encoded) + `</script>`), nil
+	// The content is generated here from paths we control, never from request input. The
+	// nonce is what lets script-src stay strict: this is the only inline script on the
+	// page, and without it the policy would need 'unsafe-inline', which would defeat it.
+	return template.HTML(`<script type="importmap" nonce="` + noncePlaceholder + `">` +
+		string(encoded) + `</script>`), nil
 }
 
 // renderIndex fills index.html's asset URLs in.
@@ -203,30 +213,23 @@ func (a *Assets) renderIndex() ([]byte, error) {
 	return []byte(out.String()), nil
 }
 
-// IndexHandler serves the single HTML page.
+// Index returns the HTML page with the given CSP nonce applied.
 //
-// Always revalidated: it is the one document carrying the hashed URLs, so a cached copy
-// would keep pointing at the previous deployment's assets no matter how fresh they are.
-func (a *Assets) IndexHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body := a.index
-		if DevMode() {
-			// Pick up edits without a restart.
-			rendered, err := a.renderIndex()
-			if err != nil {
-				slog.Error("failed to render index.html", "error", err)
-				http.Error(w, "Failed to load page", http.StatusInternalServerError)
-				return
-			}
-			body = rendered
-		}
+// The caller must send the same nonce in the Content-Security-Policy header, or the browser
+// will refuse the import map and no module will load.
+func (a *Assets) Index(nonce string) ([]byte, error) {
+	page := a.index
 
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache")
-		if _, err := w.Write(body); err != nil {
-			slog.Error("failed to write index.html", "error", err)
+	if DevMode() {
+		// Pick up edits without a restart.
+		rendered, err := a.renderIndex()
+		if err != nil {
+			return nil, err
 		}
-	})
+		page = rendered
+	}
+
+	return bytes.ReplaceAll(page, []byte(noncePlaceholder), []byte(nonce)), nil
 }
 
 // StaticHandler serves the assets under /static/.
