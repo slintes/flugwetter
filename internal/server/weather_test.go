@@ -62,101 +62,6 @@ func ptrInt(v int) *int           { return &v }
 // midday is inside both civil twilight and sunrise..sunset, so daylight costs nothing.
 const midday = "2026-08-03T12:00"
 
-// calmCAVOK is the baseline input: no cloud base, no wind, mild, dry.
-func calmCAVOK() (cloudBase *int, wind, crosswind, gusts float64, temp TemperaturePoint) {
-	return nil, 0, 0, 0, TemperaturePoint{Temperature: 18}
-}
-
-func TestCalculateVFRProbability_UnknownVisibilityStillScores(t *testing.T) {
-	base, wind, xw, gusts, temp := calmCAVOK()
-
-	prob, known := calculateVFRProbability(testDayLight(t), base, wind, xw, gusts, nil, temp, midday)
-
-	if known {
-		t.Errorf("visibilityKnown = true, want false when visibility is nil")
-	}
-	// The regression this guards: nil visibility used to force probability to -1,
-	// discarding every other factor for the ~41 tail hours of each forecast.
-	if prob != 100 {
-		t.Errorf("probability = %d, want 100 (score must survive missing visibility)", prob)
-	}
-}
-
-func TestCalculateVFRProbability_UnknownVisibilityKeepsOtherPenalties(t *testing.T) {
-	// Low ceiling at FL16 costs 25; nothing else applies.
-	prob, known := calculateVFRProbability(testDayLight(t), ptrInt(16), 0, 0, 0, nil, TemperaturePoint{Temperature: 18}, midday)
-
-	if known {
-		t.Errorf("visibilityKnown = true, want false")
-	}
-	if prob != 75 {
-		t.Errorf("probability = %d, want 75 (cloud base penalty must still apply)", prob)
-	}
-}
-
-func TestCalculateVFRProbability_KnownVisibility(t *testing.T) {
-	base, wind, xw, gusts, temp := calmCAVOK()
-
-	prob, known := calculateVFRProbability(testDayLight(t), base, wind, xw, gusts, ptrFloat(40), temp, midday)
-
-	if !known {
-		t.Errorf("visibilityKnown = false, want true when visibility is present")
-	}
-	if prob != 100 {
-		t.Errorf("probability = %d, want 100", prob)
-	}
-}
-
-func TestCalculateVFRProbability_HardNoGo(t *testing.T) {
-	tests := []struct {
-		name       string
-		cloudBase  *int
-		visibility *float64
-		timeStr    string
-	}{
-		{"visibility below 5km", nil, ptrFloat(3), midday},
-		{"cloud base below FL10", ptrInt(8), ptrFloat(40), midday},
-		{"before civil twilight", nil, ptrFloat(40), "2026-08-03T01:00"},
-		{"after civil twilight", nil, ptrFloat(40), "2026-08-03T21:00"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			prob, _ := calculateVFRProbability(testDayLight(t), tc.cloudBase, 0, 0, 0, tc.visibility, TemperaturePoint{Temperature: 18}, tc.timeStr)
-			if prob != 0 {
-				t.Errorf("probability = %d, want 0", prob)
-			}
-		})
-	}
-}
-
-func TestCalculateVFRProbability_UnparseableTime(t *testing.T) {
-	prob, known := calculateVFRProbability(testDayLight(t), nil, 0, 0, 0, ptrFloat(40), TemperaturePoint{}, "not-a-time")
-
-	if prob != -1 {
-		t.Errorf("probability = %d, want -1 for an unscoreable hour", prob)
-	}
-	if known {
-		t.Errorf("visibilityKnown = true, want false when no score was computed")
-	}
-}
-
-// A date resolveDaylight could not look up is absent from its map, so the hour arrives here
-// with a nil window. Scoring it on the remaining factors would report a CAVOK afternoon and
-// the middle of the night identically, so it must yield "no data" instead.
-func TestCalculateVFRProbability_NoDaylightWindow(t *testing.T) {
-	base, wind, xw, gusts, temp := calmCAVOK()
-
-	prob, known := calculateVFRProbability(nil, base, wind, xw, gusts, ptrFloat(40), temp, midday)
-
-	if prob != -1 {
-		t.Errorf("probability = %d, want -1 without a daylight window", prob)
-	}
-	if known {
-		t.Errorf("visibilityKnown = true, want false when no score was computed")
-	}
-}
-
 func TestGetCloudBase(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -351,6 +256,26 @@ func TestProcessWeatherData_SetsGeneratedAt(t *testing.T) {
 	}
 	if got.Stale {
 		t.Error("Stale = true on freshly processed data")
+	}
+}
+
+// Parsing the hour is the caller's job -- scoreVFR takes a time.Time -- so an upstream
+// timestamp in an unexpected shape has to leave the hour unscored here rather than being
+// scored against a zero time, which would fall outside every daylight window and read as
+// a confident 0% instead of "no data".
+func TestProcessWeatherData_UnparseableHourIsNotScored(t *testing.T) {
+	stubDayLight(t)
+
+	got := processWeatherData(context.Background(), hourlyFixture([]string{"not-a-time"}), testAirport)
+
+	if len(got.VfrData) != 1 {
+		t.Fatalf("len(VfrData) = %d, want 1", len(got.VfrData))
+	}
+	if got.VfrData[0].Probability != -1 {
+		t.Errorf("Probability = %d, want -1 for an unscoreable hour", got.VfrData[0].Probability)
+	}
+	if got.VfrData[0].VisibilityKnown {
+		t.Error("VisibilityKnown = true, want false when no score was computed")
 	}
 }
 

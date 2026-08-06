@@ -78,6 +78,19 @@ type VfrPoint struct {
 	// Probability is then computed from the remaining factors and the frontend
 	// marks it as an estimate. A Probability of -1 means no score at all.
 	VisibilityKnown bool `json:"visibility_known"`
+	// Penalties explains the score: one entry per factor that cost something, worst
+	// first. An hour with nothing against it carries none, so a clear forecast adds
+	// nothing to the payload. A no-go hour carries exactly one -- the reason.
+	Penalties []VfrPenalty `json:"penalties,omitempty"`
+}
+
+// VfrPenalty is one factor's contribution to an hour's score, as scored against vfrLimits.
+type VfrPenalty struct {
+	Factor   string  `json:"factor"`   // "crosswind gusts"
+	Value    float64 `json:"value"`    // 7.27
+	Unit     string  `json:"unit"`     // "kn"
+	Severity string  `json:"severity"` // "good" | "difficult" | "critical" | "no-go"
+	Cost     int     `json:"cost"`     // points subtracted from 100
 }
 
 // responseWriter is a custom ResponseWriter that captures the status code

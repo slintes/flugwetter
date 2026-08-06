@@ -10,6 +10,7 @@
 import './plugins.js';
 import { getWindDirectionName } from './plugins.js';
 import { pinAxisWidth, AXIS_WIDTHS_WIDE } from './viewport.js';
+import { formatPenalties } from './vfr-penalties.js';
 
 export const charts = {
     vfr: null,
@@ -124,9 +125,10 @@ export function initializeCharts() {
                             // Display time in local timezone with date and time
                             return new Date(context[0].parsed.x).toLocaleString();
                         },
+                        // What the score lost and to what. Chart.js renders an array as
+                        // one line each.
                         label: function(context) {
-                            const point = context.raw;
-                            return ``;
+                            return formatPenalties(context.raw);
                         }
                     }
                 }

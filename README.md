@@ -17,11 +17,14 @@ All four share one time axis and pan and zoom together.
 | **Clouds & visibility** | Cloud layers by height with coverage, cloud base as a flight level, visibility in km. |
 | **Wind** | Wind barbs by altitude, plus 10m speed, gusts and the crosswind component. |
 
-The VFR score starts at 100 and subtracts penalties for cloud base, visibility, total wind,
-crosswind and its gusts, precipitation, and heat. It returns 0 outside civil twilight, below
-a 1000ft ceiling, or under 5km visibility, and `-1` — rendered as "no data", not as bad
-weather — when an hour cannot be scored at all. Every rule lives in one function on purpose;
-see `internal/server/weather.go`.
+The VFR score starts at 100 and subtracts what each factor is worth: cloud base, visibility,
+total wind, crosswind and its gust spread, precipitation, heat and daylight. A factor's cost
+is a curve rather than a step, so a value a little past a threshold costs a little. Most
+factors also carry a hard limit, and any one of them past it ends the hour at 0. `-1` means
+the hour could not be scored at all and is rendered as "no data", not as bad weather.
+
+Every limit and every penalty lives in one table, `vfrLimits` in `internal/server/vfr.go`.
+Hovering an hour on the VFR chart lists exactly what its score lost and to what.
 
 Crosswind is computed against **true** runway headings taken from OpenStreetMap geometry
 rather than the published magnetic designators, and a multi-runway field is scored on its

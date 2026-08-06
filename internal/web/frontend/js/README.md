@@ -14,6 +14,7 @@ Native ES modules. No bundler, no build step, no dependencies — `index.html` l
 | `viewport.js` | Breakpoints, axis widths, VFR metrics, display density. |
 | `barbs.js` | Wind barb arithmetic, separated so it is testable without a canvas. |
 | `time.js` | `toEpochMs` — the UTC parsing every series depends on. |
+| `vfr-penalties.js` | Formats the VFR score's breakdown for the tooltip: what the hour lost, and to what. |
 | `weather-icons.js` | WMO code → icon filename, including the `-night` variants. |
 
 ## Two dependency rules
@@ -22,8 +23,8 @@ Native ES modules. No bundler, no build step, no dependencies — `index.html` l
 loader reads the picker's state; having each import the other would make them mutually
 dependent. `main.js` passes the reload in instead.
 
-**`viewport.js`, `barbs.js` and `time.js` must not import Chart.js or touch the DOM at load
-time.** That is what lets `internal/web/jstest/` run them under `node --test`. The
+**`viewport.js`, `barbs.js`, `time.js` and `vfr-penalties.js` must not import Chart.js or
+touch the DOM at load time.** That is what lets `internal/web/jstest/` run them under `node --test`. The
 `responsiveAxes` plugin lives in `plugins.js` rather than `viewport.js` for exactly this
 reason.
 

@@ -388,7 +388,27 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 		})
 
 		// Calculate VFR probability
-		vfrProbability, visibilityKnown := calculateVFRProbability(hourDaylight, cloudBase, windSpeed10m, crosswind10m, crosswindGusts10m, visibility, tempPoint, timeStr)
+		// Score the hour against vfrLimits. An unparseable timestamp leaves the hour
+		// unscored (-1, "no data") rather than guessing at the daylight window.
+		hourStart, timeErr := hourTime(timeStr)
+		vfrProbability, visibilityKnown := -1, false
+		var vfrPenalties []VfrPenalty
+		if timeErr != nil {
+			slog.Error("failed to parse time", "time", timeStr, "error", timeErr)
+		} else {
+			vfrProbability, vfrPenalties, visibilityKnown = scoreVFR(conditions{
+				time:                     hourStart,
+				daylight:                 hourDaylight,
+				cloudBaseFL:              cloudBase,
+				windSpeed:                windSpeed10m,
+				crosswind:                crosswind10m,
+				crosswindGusts:           crosswindGusts10m,
+				visibilityKM:             visibility,
+				temperature:              tempPoint.Temperature,
+				precipitation:            tempPoint.Precipitation,
+				precipitationProbability: tempPoint.PrecipitationProbability,
+			})
+		}
 
 		// Get weather code if available
 		processWeatherCode := ""
@@ -397,12 +417,10 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 
 			// is daylight? An unresolved date leaves hourDaylight nil, and the icon simply
 			// keeps its daytime variant rather than taking the process down.
-			if hourDaylight != nil {
-				if t, err := hourTime(timeStr); err == nil {
-					slog.Debug("hour", "time", t)
-					if !(t.After(hourDaylight.Parsed.Sunrise) && t.Before(hourDaylight.Parsed.Sunset)) {
-						processWeatherCode += "-night"
-					}
+			if hourDaylight != nil && timeErr == nil {
+				slog.Debug("hour", "time", hourStart)
+				if !(hourStart.After(hourDaylight.Parsed.Sunrise) && hourStart.Before(hourDaylight.Parsed.Sunset)) {
+					processWeatherCode += "-night"
 				}
 			}
 		}
@@ -411,6 +429,7 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 			Probability:     vfrProbability,
 			WeatherCode:     processWeatherCode,
 			VisibilityKnown: visibilityKnown,
+			Penalties:       vfrPenalties,
 		})
 
 	}
@@ -539,189 +558,6 @@ func getCloudBase(cloudLayers []CloudLayer) *int {
 	}
 	// No cloud base found
 	return nil
-}
-
-// calculateVFRProbability calculates the VFR probability based on weather conditions.
-// Returns a percentage value (0-100), or -1 when no score could be computed at all.
-//
-// visibilityKnown reports whether the model supplied a visibility for this hour.
-// Open-Meteo drops visibility beyond the ICON-EU horizon, which is the tail of every
-// forecast. Those hours are still scored on the factors that are available; the caller
-// is expected to present them as estimates rather than as hard numbers.
-//
-// dayLight is the window for this hour's date, resolved once per date by resolveDaylight.
-// A nil dayLight means the lookup failed and the hour cannot be scored at all.
-func calculateVFRProbability(dayLight *SunriseSunsetResponse, cloudBase *int, windSpeed, crosswind, crosswindGusts float64, visibility *float64, tempPoint TemperaturePoint, timeStr string) (probability int, visibilityKnown bool) {
-
-	debugProb := func(reason string, value string) {
-		slog.Debug("vfr penalty applied", "reason", reason, "value", value)
-	}
-
-	t, err := hourTime(timeStr)
-	if err != nil {
-		slog.Error("failed to parse time", "time", timeStr, "error", err)
-		return -1, false
-	}
-
-	// Without a daylight window there is no way to tell a CAVOK afternoon from the middle
-	// of the night, so the hour scores -1 ("no data") rather than a misleading number.
-	if dayLight == nil {
-		return -1, false
-	}
-
-	// Start with 100% VFR probability
-	probability = 100
-	visibilityKnown = visibility != nil
-
-	slog.Debug("scoring vfr probability", "hour", t.Format(time.RFC822))
-
-	// outside civil twilight no go
-	if t.Before(dayLight.Parsed.CivilTwilightBegin) || t.After(dayLight.Parsed.CivilTwilightEnd) {
-		debugProb("outside civil twilight", "0")
-		return 0, visibilityKnown
-	}
-	// before sunrise and after sunset reduced...
-	if t.Before(dayLight.Parsed.Sunrise) || t.After(dayLight.Parsed.Sunset) {
-		debugProb("outside sunlight", "-30")
-		probability -= 30
-	}
-
-	// Cloud base rules
-	if cloudBase != nil {
-		// cloud base is flight level!
-		if *cloudBase < 10 {
-			debugProb("cloudbase <1000ft", "0")
-			return 0, visibilityKnown
-		} else if *cloudBase < 15 {
-			debugProb("cloudbase <1500ft", "-50")
-			probability -= 50
-		} else if *cloudBase < 20 {
-			debugProb("cloudbase <2000ft", "-25")
-			probability -= 25
-		} else if *cloudBase < 25 {
-			debugProb("cloudbase <2500ft", "-10")
-			probability -= 10
-		} else if *cloudBase < 30 {
-			debugProb("cloudbase <3000ft", "-5")
-			probability -= 5
-		}
-	}
-
-	// wind
-	sigWind := int(windSpeed) - 10
-	if sigWind > 0 {
-		reduce := 0
-		if sigWind > 15 {
-			reduce = 3 * sigWind
-		} else if sigWind > 10 {
-			reduce = 2 * sigWind
-		} else {
-			reduce = sigWind
-		}
-		debugProb("windspeed > 10", fmt.Sprintf("-%d", reduce))
-		probability -= reduce
-	}
-
-	// crosswind
-	sigCrossWind := int(crosswind) - 5
-	if sigCrossWind > 0 {
-		reduce := 0
-		if sigCrossWind > 10 {
-			reduce = 5 * sigCrossWind
-		} else if sigCrossWind > 5 {
-			reduce = 2 * sigCrossWind
-		} else {
-			reduce = sigCrossWind
-		}
-		debugProb("cross wind > 5", fmt.Sprintf("-%d", reduce))
-		probability -= reduce
-	}
-
-	// crosswind gusts
-	sigCrossWindGusts := int(crosswindGusts-crosswind) - 3
-	if sigCrossWindGusts > 0 {
-		reduce := 0
-		if sigCrossWindGusts > 7 {
-			reduce = 20
-		} else if sigCrossWindGusts > 2 {
-			reduce = 10
-		} else {
-			reduce = 5
-		}
-		debugProb("cross wind gusts", fmt.Sprintf("-%d", reduce))
-		probability -= reduce
-	}
-
-	// Visibility rules
-	if visibility != nil {
-		if *visibility < 5 {
-			// When visibility below 5km, VFR is 0%
-			debugProb("visibility < 5km", "0")
-			return 0, visibilityKnown
-		} else if *visibility < 10 {
-			debugProb("visibility < 10km", "-50")
-			probability -= 50
-		} else if *visibility < 20 {
-			debugProb("visibility < 20km", "-20")
-			probability -= 20
-		} else if *visibility < 30 {
-			debugProb("visibility < 30km", "-10")
-			probability -= 10
-		}
-	} else {
-		debugProb("no visibility avail", "")
-	}
-
-	// Precipitation rules
-	switch {
-	case tempPoint.Precipitation >= 8:
-		debugProb("precipitation >= 8", "-25")
-		probability -= 25
-	case tempPoint.Precipitation >= 4:
-		debugProb("precipitation >= 4", "-20")
-		probability -= 20
-	case tempPoint.Precipitation >= 2:
-		debugProb("precipitation >= 2", "-15")
-		probability -= 15
-	case tempPoint.Precipitation >= 1:
-		debugProb("precipitation >= 1", "-10")
-		probability -= 10
-	case tempPoint.Precipitation > 0:
-		debugProb("precipitation > 0", "-5")
-		probability -= 5
-	}
-
-	if tempPoint.Precipitation >= 2 {
-		switch {
-		case tempPoint.PrecipitationProbability >= 80:
-			debugProb("precipitation >= 2, prob >= 80", "-20")
-			probability -= 20
-		case tempPoint.PrecipitationProbability >= 60:
-			debugProb("precipitation >= 2, prob >= 60", "-15")
-			probability -= 15
-		case tempPoint.PrecipitationProbability >= 40:
-			debugProb("precipitation >= 2, prob >= 40", "-10")
-			probability -= 10
-		}
-	}
-
-	// high tmp > 28
-	tmp := int(tempPoint.Temperature) - 28
-	if tmp > 0 {
-		reduce := tmp * 3
-		debugProb("high temperature", fmt.Sprintf("-%d", reduce))
-		probability -= reduce
-	}
-
-	// Ensure probability is within 0 - 100 range. An hour without visibility keeps its
-	// score -- the remaining factors are still meaningful -- and is flagged instead.
-	if probability < 0 {
-		probability = 0
-	} else if probability > 100 {
-		probability = 100
-	}
-
-	return probability, visibilityKnown
 }
 
 type SunriseSunsetResponse struct {

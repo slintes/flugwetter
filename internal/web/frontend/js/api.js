@@ -234,7 +234,8 @@ export function updateCharts(data) {
                 y: timePoint.probability / 100, // Convert to 0-1 range for chart
                 probability: timePoint.probability, // Keep original percentage for display
                 weatherCode: timePoint.weather_code, // Include weather code for icon display
-                visibilityKnown: timePoint.visibility_known // false => score is an estimate
+                visibilityKnown: timePoint.visibility_known, // false => score is an estimate
+                penalties: timePoint.penalties // what the score lost, worst first; absent when nothing did
             })
         })
     }
