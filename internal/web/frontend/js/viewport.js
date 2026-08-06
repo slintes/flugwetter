@@ -65,3 +65,19 @@ export const VFR_METRICS_NARROW = { icon: 20, font: '14px Narrow', unknownFont: 
 export function vfrMetrics() {
     return isNarrowViewport() ? VFR_METRICS_NARROW : VFR_METRICS_WIDE;
 }
+
+// Tooltip text. Chart.js defaults to 12px, which is small on a high-density display —
+// physically smaller than the CSS number suggests, and the tooltip is the one place the
+// charts show prose rather than a symbol. The VFR tooltip in particular lists a line per
+// penalty and is meant to be read, not glanced at.
+//
+// Narrow takes the same jump the axes and the VFR labels take at the breakpoint, and for a
+// harder reason than taste: Chart.js neither wraps a tooltip line nor shrinks it to fit, so
+// the width of the longest line is a hard constraint. On a 360px screen the VFR breakdown
+// is what sets the ceiling, which is also why it drops the severity word there.
+export const TOOLTIP_FONT_WIDE = { title: 17, body: 16, padding: 10 };
+export const TOOLTIP_FONT_NARROW = { title: 15, body: 14, padding: 8 };
+
+export function tooltipFont() {
+    return isNarrowViewport() ? TOOLTIP_FONT_NARROW : TOOLTIP_FONT_WIDE;
+}

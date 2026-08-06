@@ -9,8 +9,9 @@ globalThis.document = { documentElement: { dataset: {} } };
 const {
     AXIS_WIDTHS_WIDE, AXIS_WIDTHS_NARROW, NARROW_VIEWPORT, WIDE_VIEWPORT,
     VFR_METRICS_WIDE, VFR_METRICS_NARROW,
-    axisWidths, vfrMetrics, isNarrowViewport, isWideViewport, isLowDensity, applyDensity,
-    pinAxisWidth,
+    TOOLTIP_FONT_WIDE, TOOLTIP_FONT_NARROW,
+    axisWidths, vfrMetrics, tooltipFont, isNarrowViewport, isWideViewport, isLowDensity,
+    applyDensity, pinAxisWidth,
 } = await import('../frontend/js/viewport.js');
 
 const atWidth = (px, fn) => {
@@ -42,6 +43,22 @@ test('vfrMetrics switches at the same breakpoint as the axes', () => {
     assert.deepEqual(atWidth(360, vfrMetrics), VFR_METRICS_NARROW);
     assert.deepEqual(atWidth(600, vfrMetrics), VFR_METRICS_NARROW);
     assert.deepEqual(atWidth(601, vfrMetrics), VFR_METRICS_WIDE);
+});
+
+test('tooltipFont switches at the same breakpoint as the axes', () => {
+    assert.deepEqual(atWidth(360, tooltipFont), TOOLTIP_FONT_NARROW);
+    assert.deepEqual(atWidth(600, tooltipFont), TOOLTIP_FONT_NARROW);
+    assert.deepEqual(atWidth(601, tooltipFont), TOOLTIP_FONT_WIDE);
+});
+
+// Chart.js defaults to 12px. The whole point of these is to be bigger than that, and
+// bigger on a roomy viewport than on a phone.
+test('tooltip text is larger than the Chart.js default at both sizes', () => {
+    for (const metrics of [TOOLTIP_FONT_NARROW, TOOLTIP_FONT_WIDE]) {
+        assert.ok(metrics.body > 12, `body ${metrics.body} should beat the 12px default`);
+        assert.ok(metrics.title >= metrics.body, 'the title should not be smaller than the body');
+    }
+    assert.ok(TOOLTIP_FONT_WIDE.body > TOOLTIP_FONT_NARROW.body);
 });
 
 test('isNarrowViewport and isWideViewport bracket the middle', () => {

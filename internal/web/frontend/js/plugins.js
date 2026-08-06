@@ -9,7 +9,7 @@
 
 import { weatherCodeToIcon } from './weather-icons.js';
 import { barbComponents, isCalm } from './barbs.js';
-import { axisWidths, isNarrowViewport, vfrMetrics } from './viewport.js';
+import { axisWidths, isNarrowViewport, vfrMetrics, tooltipFont } from './viewport.js';
 
 // Cache for weather icons
 const weatherIconCache = {};
@@ -82,14 +82,29 @@ Chart.Interaction.modes.timeNearest = function(chart, e, options, useFinalPositi
 // responsiveAxes runs before every layout, which is what makes a resize across the
 // breakpoint take effect without a resize handler of our own.
 //
-// Two jobs: reserve the axis space on the VFR chart, which has no visible axis of its own
-// and would otherwise run wider than the other three; and drop the rotated axis titles on
-// a phone, because "Height (feet) - Log Scale" plus a "10000ft" tick does not fit in 54px
-// and the tick labels are the half that cannot be inferred from the chart heading.
+// Three jobs: size the tooltip text on every chart; reserve the axis space on the VFR
+// chart, which has no visible axis of its own and would otherwise run wider than the other
+// three; and drop the rotated axis titles on a phone, because "Height (feet) - Log Scale"
+// plus a "10000ft" tick does not fit in 54px and the tick labels are the half that cannot
+// be inferred from the chart heading.
+//
+// The tooltip sizes are written here as plain numbers rather than declared as scriptable
+// options. Chart.js sizes the tooltip box in its update pass and paints it in the draw
+// pass, and a plain value is what guarantees both see the same number; a scriptable font
+// re-resolves per call, which is a needless way to invite the two apart. Rewriting them
+// here is also what makes them follow a resize, exactly as the axis widths do below.
 Chart.register({
     id: 'responsiveAxes',
     beforeLayout: function(chart) {
         const widths = axisWidths();
+        const font = tooltipFont();
+
+        const tooltip = chart.options.plugins && chart.options.plugins.tooltip;
+        if (tooltip) {
+            tooltip.titleFont = { size: font.title, weight: 'bold' };
+            tooltip.bodyFont = { size: font.body };
+            tooltip.padding = font.padding;
+        }
 
         if (chart.canvas.id === 'vfrChart') {
             chart.options.layout.padding.left = widths.left;
