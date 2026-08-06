@@ -91,6 +91,17 @@ type VfrPenalty struct {
 	Unit     string  `json:"unit"`     // "kn"
 	Severity string  `json:"severity"` // "good" | "difficult" | "critical" | "no-go"
 	Cost     int     `json:"cost"`     // points subtracted from 100
+	// Scale is present when the factor's cost was modulated by a second quantity --
+	// precipitation is charged for what would fall, times how likely it is to fall. Cost
+	// is the scaled figure; this is what scaled it.
+	Scale *VfrScale `json:"scale,omitempty"`
+}
+
+// VfrScale is the quantity that modulated a penalty.
+type VfrScale struct {
+	Name  string  `json:"name"`  // "probability"
+	Value float64 `json:"value"` // 88
+	Unit  string  `json:"unit"`  // "%"
 }
 
 // responseWriter is a custom ResponseWriter that captures the status code

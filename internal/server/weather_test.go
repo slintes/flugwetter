@@ -259,6 +259,49 @@ func TestProcessWeatherData_SetsGeneratedAt(t *testing.T) {
 	}
 }
 
+// The precipitation penalty is the only scaled one, and neither the golden fixture nor a
+// typical summer forecast contains a drop of rain -- so without this the path from the
+// decoded hour through conditions to a scaled VfrPenalty is never walked end to end.
+func TestProcessWeatherData_ScaledPenaltyReachesTheWireFormat(t *testing.T) {
+	stubDayLight(t)
+
+	fixture := hourlyFixture([]string{"2026-08-03T12:00"})
+	fixture.Hourly.Precipitation = []float64{3.2}
+	fixture.Hourly.PrecipitationProbability = []int{88}
+
+	got := processWeatherData(context.Background(), fixture, testAirport)
+
+	if len(got.VfrData) != 1 {
+		t.Fatalf("len(VfrData) = %d, want 1", len(got.VfrData))
+	}
+	// The fixture's other fields are not all free -- its visibility costs a point or two --
+	// so pick the penalty under test out rather than assuming it is alone.
+	var rain *VfrPenalty
+	for i, p := range got.VfrData[0].Penalties {
+		if p.Factor == "precipitation" {
+			rain = &got.VfrData[0].Penalties[i]
+		}
+	}
+	if rain == nil {
+		t.Fatalf("Penalties = %+v, want one for precipitation", got.VfrData[0].Penalties)
+	}
+
+	if rain.Value != 3.2 || rain.Unit != "mm/h" {
+		t.Errorf("penalty = %+v, want the amount in mm/h, unscaled", *rain)
+	}
+	if rain.Scale == nil {
+		t.Fatal("Scale = nil, want the probability that scaled it")
+	}
+	if rain.Scale.Value != 88 {
+		t.Errorf("Scale.Value = %v, want 88 -- the hour's probability must reach the score",
+			rain.Scale.Value)
+	}
+	// 3.2mm/h is worth 21.7 if it falls, and at 88% the weight has already reached 1.
+	if rain.Cost != 22 {
+		t.Errorf("Cost = %d, want 22 (the amount's cost, scaled by the probability)", rain.Cost)
+	}
+}
+
 // Parsing the hour is the caller's job -- scoreVFR takes a time.Time -- so an upstream
 // timestamp in an unexpected shape has to leave the hour unscored here rather than being
 // scored against a zero time, which would fall outside every daylight window and read as

@@ -49,27 +49,116 @@ func TestFactorValidate_RejectsMalformedCurves(t *testing.T) {
 	tests := []struct {
 		name  string
 		curve []anchor
+		scale *scale
 	}{
-		{"a single anchor", []anchor{{perfect, 10, 0}}},
-		{"no perfect anchor first", []anchor{{good, 10, 5}, {difficult, 20, 10}}},
-		{"a perfect anchor that costs something", []anchor{{perfect, 10, 5}, {good, 20, 10}}},
-		{"severities out of order", []anchor{{perfect, 10, 0}, {critical, 20, 30}, {good, 30, 40}}},
-		{"a repeated severity", []anchor{{perfect, 10, 0}, {good, 20, 5}, {good, 30, 10}}},
-		{"thresholds that turn around", []anchor{{perfect, 10, 0}, {good, 20, 5}, {difficult, 15, 10}}},
-		{"a repeated threshold", []anchor{{perfect, 10, 0}, {good, 20, 5}, {difficult, 20, 10}}},
-		{"costs that fall", []anchor{{perfect, 10, 0}, {good, 20, 15}, {difficult, 30, 10}}},
-		{"an anchor after the no-go", []anchor{{perfect, 10, 0}, {noGo, 20, 0}, {critical, 30, 10}}},
-		{"a no-go with an explicit cost", []anchor{{perfect, 10, 0}, {noGo, 20, 60}}},
-		{"no room to ramp into the no-go", []anchor{{perfect, 10, 0}, {critical, 20, 100}, {noGo, 30, 0}}},
+		{"a single anchor", []anchor{{perfect, 10, 0}}, nil},
+		{"no perfect anchor first", []anchor{{good, 10, 5}, {difficult, 20, 10}}, nil},
+		{"a perfect anchor that costs something", []anchor{{perfect, 10, 5}, {good, 20, 10}}, nil},
+		{"severities out of order", []anchor{{perfect, 10, 0}, {critical, 20, 30}, {good, 30, 40}}, nil},
+		{"a repeated severity", []anchor{{perfect, 10, 0}, {good, 20, 5}, {good, 30, 10}}, nil},
+		{"thresholds that turn around", []anchor{{perfect, 10, 0}, {good, 20, 5}, {difficult, 15, 10}}, nil},
+		{"a repeated threshold", []anchor{{perfect, 10, 0}, {good, 20, 5}, {difficult, 20, 10}}, nil},
+		{"costs that fall", []anchor{{perfect, 10, 0}, {good, 20, 15}, {difficult, 30, 10}}, nil},
+		{"an anchor after the no-go", []anchor{{perfect, 10, 0}, {noGo, 20, 0}, {critical, 30, 10}}, nil},
+		{"a no-go with an explicit cost", []anchor{{perfect, 10, 0}, {noGo, 20, 60}}, nil},
+		{"no room to ramp into the no-go", []anchor{{perfect, 10, 0}, {critical, 20, 100}, {noGo, 30, 0}}, nil},
+
+		// A scale multiplies an accumulating cost. Scaling a no-go would mean deciding, by
+		// side effect, whether an unlikely deluge still ends the hour.
+		{
+			name:  "a scale on a factor that also has a no-go",
+			curve: []anchor{{perfect, 10, 0}, {noGo, 20, 0}},
+			scale: &scale{name: "probability", points: []scalePoint{{0, 0.2}, {100, 1}}},
+		},
+		{
+			name:  "a scale with a single point",
+			curve: []anchor{{perfect, 10, 0}, {good, 20, 5}},
+			scale: &scale{name: "probability", points: []scalePoint{{0, 0.2}}},
+		},
+		{
+			name:  "scale points that run backwards",
+			curve: []anchor{{perfect, 10, 0}, {good, 20, 5}},
+			scale: &scale{name: "probability", points: []scalePoint{{0, 0.2}, {100, 0.5}, {50, 1}}},
+		},
+		{
+			name:  "a weight above 1",
+			curve: []anchor{{perfect, 10, 0}, {good, 20, 5}},
+			scale: &scale{name: "probability", points: []scalePoint{{0, 0.2}, {100, 1.5}}},
+		},
+		{
+			name:  "a weight below 0",
+			curve: []anchor{{perfect, 10, 0}, {good, 20, 5}},
+			scale: &scale{name: "probability", points: []scalePoint{{0, -0.1}, {100, 1}}},
+		},
+		{
+			// Otherwise an hour gets cheaper as its rain gets likelier.
+			name:  "a weight that dips",
+			curve: []anchor{{perfect, 10, 0}, {good, 20, 5}},
+			scale: &scale{name: "probability", points: []scalePoint{{0, 0.5}, {50, 0.3}, {100, 1}}},
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			f := factor{name: "test", curve: tc.curve}
+			f := factor{name: "test", curve: tc.curve, scaledBy: tc.scale}
 			if err := f.validate(); err == nil {
 				t.Error("validate() = nil, want an error")
 			}
 		})
+	}
+}
+
+func TestScaleWeight(t *testing.T) {
+	s := &scale{
+		name:   "probability",
+		unit:   "%",
+		points: []scalePoint{{0, 0.15}, {30, 0.25}, {50, 0.55}, {70, 0.85}, {100, 1.0}},
+	}
+
+	tests := []struct {
+		name  string
+		value float64
+		want  float64
+	}{
+		{"at the first point", 0, 0.15},
+		{"below the first point clamps", -20, 0.15},
+		{"at an inner point", 50, 0.55},
+		{"at the last point", 100, 1.0},
+		{"above the last point clamps", 140, 1.0},
+		{"interpolated across a shallow segment", 15, 0.20},
+		{"interpolated across a steep segment", 60, 0.70},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := s.weight(tc.value); math.Abs(got-tc.want) > 1e-9 {
+				t.Errorf("weight(%v) = %v, want %v", tc.value, got, tc.want)
+			}
+		})
+	}
+}
+
+// An unknown probability is not a low one. Discounting a penalty because the data is
+// missing would understate exactly the hours nothing is known about -- the same principle
+// that keeps a missing visibility from scoring as a clear one.
+func TestFactorWeightFor_MissingDataDoesNotDiscount(t *testing.T) {
+	f := factor{
+		name:  "test",
+		curve: []anchor{{perfect, 0, 0}, {good, 10, 20}},
+		scaledBy: &scale{
+			name:   "probability",
+			by:     func(conditions) (float64, bool) { return 0, false },
+			points: []scalePoint{{0, 0.1}, {100, 1}},
+		},
+	}
+
+	w, _, scaled := f.weightFor(scoringConditions(t))
+
+	if w != 1 {
+		t.Errorf("weight = %v, want 1 when the scaling value is unavailable", w)
+	}
+	if scaled {
+		t.Error("scaled = true, want false so the breakdown does not claim a scale it did not apply")
 	}
 }
 
@@ -90,8 +179,8 @@ func TestFactorEvaluate_HitsItsAnchors(t *testing.T) {
 			if isNoGo {
 				t.Errorf("%s at %v %s: isNoGo = true, want false", f.name, a.at, f.unit)
 			}
-			if want := int(math.Round(a.cost)); cost != want {
-				t.Errorf("%s at %v %s: cost = %d, want %d", f.name, a.at, f.unit, cost, want)
+			if math.Abs(cost-a.cost) > 1e-9 {
+				t.Errorf("%s at %v %s: cost = %v, want %v", f.name, a.at, f.unit, cost, a.cost)
 			}
 			// An anchor names the band that ends at it -- except the perfect one, where
 			// there is no band below to be in.
@@ -126,8 +215,8 @@ func TestFactorEvaluate_RampsBetweenAnchors(t *testing.T) {
 			if isNoGo {
 				t.Errorf("%s at %v %s: isNoGo = true short of the no-go threshold", f.name, mid, f.unit)
 			}
-			if want := int(math.Round((costAt(i) + costAt(i+1)) / 2)); cost != want {
-				t.Errorf("%s at %v %s: cost = %d, want %d (midpoint of %v and %v)",
+			if want := (costAt(i) + costAt(i+1)) / 2; math.Abs(cost-want) > 1e-9 {
+				t.Errorf("%s at %v %s: cost = %v, want %v (midpoint of %v and %v)",
 					f.name, mid, f.unit, cost, want, costAt(i), costAt(i+1))
 			}
 			// Approaching a no-go is still named for the band before it: a wall is not
@@ -177,7 +266,7 @@ func TestFactorEvaluate_ClampsBeyondTheLastAnchor(t *testing.T) {
 				t.Error("isNoGo = true for a curve with no no-go anchor")
 			}
 			if cost != 50 {
-				t.Errorf("cost = %d, want 50 (the last anchor's cost, not an extrapolation)", cost)
+				t.Errorf("cost = %v, want 50 (the last anchor's cost, not an extrapolation)", cost)
 			}
 			if sev != difficult {
 				t.Errorf("severity = %s, want difficult", sev)
@@ -234,28 +323,55 @@ func TestScoreVFR_Calibration(t *testing.T) {
 			with: func(c conditions) conditions { c.crosswind, c.crosswindGusts = 3.02, 7.27; return c },
 			want: 100,
 		},
+		// Precipitation is one factor: what would fall, scaled by how likely it is to fall.
+		// These four are the corners of that interaction -- the same amount at two
+		// probabilities, and two amounts at the same probability.
 		{
-			name: "6mm/h of rain costs 13",
-			with: func(c conditions) conditions { c.precipitation = 6; return c },
-			want: 87,
-		},
-		{
-			name: "the same rain at 80 percent costs a further 15",
+			name: "2mm/h at 30 percent costs 6",
 			with: func(c conditions) conditions {
-				c.precipitation, c.precipitationProbability = 6, 80
+				c.precipitation, c.precipitationProbability = 2, 30
 				return c
 			},
-			want: 72,
+			want: 94,
 		},
 		{
-			// Below 2mm/h the probability is not worth a penalty of its own: a 90% chance
-			// of a millimetre is not a reason to stay on the ground.
-			name: "a 90 percent chance of 1.5mm/h costs only the amount",
+			// Two and a half times the cost of the same rain at 30%: the probability
+			// swings hardest through the middle of its range, where the decision turns.
+			name: "2mm/h at 70 percent costs 15",
 			with: func(c conditions) conditions {
-				c.precipitation, c.precipitationProbability = 1.5, 90
+				c.precipitation, c.precipitationProbability = 2, 70
 				return c
 			},
-			want: 97,
+			want: 85,
+		},
+		{
+			// The point of scaling rather than adding: at 2mm/h the swing from 30% to 70%
+			// is 9 points, at 15mm/h it is 40.
+			name: "15mm/h at 30 percent costs 25",
+			with: func(c conditions) conditions {
+				c.precipitation, c.precipitationProbability = 15, 30
+				return c
+			},
+			want: 75,
+		},
+		{
+			name: "15mm/h at 70 percent costs 65",
+			with: func(c conditions) conditions {
+				c.precipitation, c.precipitationProbability = 15, 70
+				return c
+			},
+			want: 35,
+		},
+		{
+			// No no-go on precipitation: the curve reaches 100 by itself at its last
+			// anchor, so certain heavy rain ends the hour by accumulation, with the
+			// breakdown naming it.
+			name: "20mm/h at 100 percent ends the hour on its own",
+			with: func(c conditions) conditions {
+				c.precipitation, c.precipitationProbability = 20, 100
+				return c
+			},
+			want: 0,
 		},
 		{
 			name: "32C costs 18",
@@ -329,11 +445,6 @@ func TestScoreVFR_NoGos(t *testing.T) {
 			name:   "a gust spread past the limit",
 			with:   func(c conditions) conditions { c.crosswind, c.crosswindGusts = 2, 32; return c },
 			factor: "crosswind gusts",
-		},
-		{
-			name:   "rain past the limit",
-			with:   func(c conditions) conditions { c.precipitation = 30; return c },
-			factor: "precipitation",
 		},
 		{
 			name:   "heat past the limit",
@@ -459,5 +570,53 @@ func TestScoreVFR_BreakdownExplainsTheScore(t *testing.T) {
 	}
 	if penalties[0].Factor != "crosswind" {
 		t.Errorf("penalties[0].Factor = %q, want the dominant factor first", penalties[0].Factor)
+	}
+}
+
+// A scaled penalty's cost alone does not identify the hour: near-certain drizzle and an
+// unlikely downpour land on similar numbers by design. The breakdown has to carry what
+// scaled it, or the tooltip cannot tell those two apart.
+//
+// The inputs are the wettest hour in the month of EDWN data this calibration was checked
+// against, so this doubles as the one real-world case in the suite.
+func TestScoreVFR_BreakdownCarriesTheScale(t *testing.T) {
+	c := scoringConditions(t)
+	c.precipitation, c.precipitationProbability = 3.2, 88
+
+	prob, penalties, _ := scoreVFR(c)
+
+	if prob != 78 {
+		t.Errorf("probability = %d, want 78", prob)
+	}
+
+	if len(penalties) != 1 {
+		t.Fatalf("penalties = %+v, want just the precipitation one", penalties)
+	}
+	got := penalties[0]
+
+	if got.Scale == nil {
+		t.Fatal("Scale = nil, want the probability that scaled this penalty")
+	}
+	if got.Scale.Name != "probability" || got.Scale.Value != 88 || got.Scale.Unit != "%" {
+		t.Errorf("Scale = %+v, want probability 88%%", *got.Scale)
+	}
+	if got.Value != 3.2 {
+		t.Errorf("Value = %v, want the amount in the factor's own unit, unscaled", got.Value)
+	}
+}
+
+// Only a factor that declares a scale gets one, so an unscaled penalty must not sprout an
+// empty object in the JSON.
+func TestScoreVFR_UnscaledPenaltiesCarryNoScale(t *testing.T) {
+	c := scoringConditions(t)
+	c.windSpeed = 12
+
+	_, penalties, _ := scoreVFR(c)
+
+	if len(penalties) != 1 {
+		t.Fatalf("penalties = %+v, want just the wind one", penalties)
+	}
+	if penalties[0].Scale != nil {
+		t.Errorf("Scale = %+v, want nil on a factor with no scale", *penalties[0].Scale)
 	}
 }

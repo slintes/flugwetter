@@ -104,6 +104,37 @@ was a special case in the evaluator, which is exactly what this design set out t
 Its value is meaningless to a reader, so it is the one factor with no unit, and the tooltip
 formatter omits the number for any factor without one.
 
+### D8 — Precipitation amount and probability are one penalty, not two
+
+They started as two rows whose costs were added, with the probability row gated behind a
+hard "only once there is at least this much rain" guard. That cannot express what actually
+matters: the same probability is worth almost nothing against light rain and a great deal
+against heavy rain, and an added penalty knows nothing about the amount it is added to. The
+guard made it worse — near-certain light rain fell below the gate and its certainty was
+discarded outright.
+
+So a factor may now be **scaled**: its cost is what the value is worth if it happens, times
+a weight for how likely that is. The amount curve stays in mm/h, which keeps its anchors
+readable and tunable as ordinary rainfall rates.
+
+Two things this deliberately is not:
+
+- **Not a formula.** The weight is an interpolated curve like every other curve here, so the
+  risk attitude is data. A straight line is the expected-cost reading — cost times chance,
+  no attitude at all. The shipped weights are deliberately not straight: they are flat at
+  the bottom, steep through the middle and flat again at the top, because that is what a
+  go/no-go decision does. Below a certain chance the hour is not in question; above another
+  it is decided; the middle is where the answer moves.
+- **Not applicable to a no-go.** Scaling a hard limit would answer "does an unlikely deluge
+  still end the hour" by side effect. `validate()` refuses a factor that carries both, so
+  the question has to be answered on purpose. Precipitation's own no-go was dropped in the
+  same change: its curve reaches a full 100 unaided, so certain heavy rain still ends the
+  hour — by accumulation, with the breakdown naming the reason.
+
+The mechanism generalises. Forecast gusts have the same problem — Open-Meteo's ensemble can
+say how much the members agree about them — and that would be a scale on the gust factor
+rather than anything new.
+
 ## Calibration
 
 **The numbers live in `vfrLimits` and nowhere else.** They are personal minima and get
@@ -116,8 +147,9 @@ What the shape is meant to express, and what should survive a retune:
   strong wind straight down the runway is not the problem a strong crosswind is.
 - Gusts are scored on their margin over the steady crosswind, not their absolute value:
   5 gusting 15 is harder to land in than a steady 15.
-- Precipitation probability only applies once there is real rain in the forecast. A 90%
-  chance of a tenth of a millimetre is not a reason to stay on the ground.
+- Precipitation is charged for what would fall, times how likely it is to fall. A 90% chance
+  of a tenth of a millimetre is not a reason to stay on the ground; a 90% chance of a
+  downpour is.
 - A curve should not have a flat segment between two steep ones. A slope that rises,
   falls and rises again means the anchors disagree about where the difficulty is.
 

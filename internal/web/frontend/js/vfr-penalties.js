@@ -27,7 +27,15 @@ export function formatPenalties(point) {
 // ended the hour on its own, and reporting it as arithmetic would invite the reader to add
 // it to the others.
 function formatPenalty(penalty) {
-    const head = [penalty.factor, formatValue(penalty.value, penalty.unit)].filter(Boolean).join(' ');
+    const parts = [penalty.factor, formatValue(penalty.value, penalty.unit)];
+
+    // A scaled factor was charged for what would happen, times how likely it is to happen.
+    // Showing only the cost would make an hour of near-certain drizzle and one of unlikely
+    // heavy rain look like the same forecast.
+    if (penalty.scale) {
+        parts.push(`at ${formatValue(penalty.scale.value, penalty.scale.unit)}`);
+    }
+    const head = parts.filter(Boolean).join(' ');
 
     if (penalty.severity === 'no-go') {
         return `${head} — no-go`;
@@ -46,5 +54,7 @@ function formatValue(value, unit) {
         return '';
     }
 
-    return `${Math.round(value * 10) / 10} ${unit}`;
+    const rounded = Math.round(value * 10) / 10;
+    // Percent hugs its number; every other unit here is a word and takes a space.
+    return unit === '%' ? `${rounded}%` : `${rounded} ${unit}`;
 }

@@ -72,14 +72,76 @@ type factor struct {
 	unit string
 
 	// value extracts this factor's input for one hour. ok=false skips the factor
-	// entirely, either because the data is missing (visibility beyond the model horizon)
-	// or because the factor does not apply (precipitation probability without
-	// precipitation to speak of).
+	// entirely, because the data is missing -- visibility beyond the model horizon.
 	value func(c conditions) (v float64, ok bool)
 
 	// curve is ordered from perfect to worst. Whether the factor gets worse as its value
 	// rises or falls is inferred from the direction the thresholds run in.
 	curve []anchor
+
+	// scaledBy, when set, multiplies this factor's cost by how likely its value is to
+	// materialise. The curve stays in the factor's own unit, so its anchors keep reading
+	// as "this much, if it happens", and the scale answers "and how likely is that".
+	//
+	// Precipitation is the case this exists for: amount and probability are not
+	// independent. 2mm/h at 20% or at 60% is much the same hour; 15mm/h at 20% or at 60%
+	// is not, and no penalty added to the amount can express that, because the amount
+	// plays no part in what the addition costs.
+	scaledBy *scale
+}
+
+// scale modulates a factor's cost by a second quantity.
+//
+// The weight is a curve of its own rather than a formula, so the shape is data: a straight
+// line is the expected-cost reading, and anything else is a deliberate risk attitude that
+// gets retuned the same way every other number in this file does.
+type scale struct {
+	name string // "probability" -- for the breakdown
+	unit string // "%"
+
+	// by extracts the modulating value. ok=false means no scaling at all, i.e. weight 1.
+	// Missing data must never discount a penalty: an unknown probability is not a low one.
+	by func(c conditions) (v float64, ok bool)
+
+	// points are ordered by `at`, with the weight interpolated between them and clamped
+	// outside them -- the same shape rule the cost curves follow.
+	points []scalePoint
+}
+
+type scalePoint struct {
+	at     float64
+	weight float64
+}
+
+// weight returns the multiplier for v.
+func (s *scale) weight(v float64) float64 {
+	if v <= s.points[0].at {
+		return s.points[0].weight
+	}
+	last := len(s.points) - 1
+	if v >= s.points[last].at {
+		return s.points[last].weight
+	}
+
+	i := 0
+	for i+1 < last && v > s.points[i+1].at {
+		i++
+	}
+	lo, hi := s.points[i], s.points[i+1]
+	return lo.weight + (v-lo.at)/(hi.at-lo.at)*(hi.weight-lo.weight)
+}
+
+// weightFor resolves the multiplier for one hour, including the unscaled and missing-data
+// cases. The second return is the modulating value, for the breakdown.
+func (f factor) weightFor(c conditions) (w float64, v float64, scaled bool) {
+	if f.scaledBy == nil {
+		return 1, 0, false
+	}
+	v, ok := f.scaledBy.by(c)
+	if !ok {
+		return 1, 0, false
+	}
+	return f.scaledBy.weight(v), v, true
 }
 
 // conditions is one hour's input to the scoring.
@@ -196,32 +258,38 @@ var vfrLimits = []factor{
 		},
 	},
 	{
+		// The anchors are what the rain is worth if it falls; the scale then asks how
+		// likely that is. No no-go: the curve reaches a full 100 on its own, so certain
+		// heavy rain still ends the hour, by accumulation and with the breakdown saying so.
 		name:  "precipitation",
 		unit:  "mm/h",
 		value: func(c conditions) (float64, bool) { return c.precipitation, true },
 		curve: []anchor{
-			{perfect, 1, 0},
-			{good, 2, 5},
-			{difficult, 10, 20},
-			{critical, 20, 40},
-			{noGo, 30, 0},
+			{perfect, 0, 0},
+			{good, 0.15, 10},
+			{difficult, 8, 40},
+			{critical, 20, 100},
 		},
-	},
-	{
-		// Only meaningful once there is rain to be probable about. A 90% chance of 0.1mm
-		// is not worth a penalty on top of the amount itself.
-		name: "precipitation probability",
-		unit: "%",
-		value: func(c conditions) (float64, bool) {
-			if c.precipitation < 2 {
-				return 0, false
-			}
-			return float64(c.precipitationProbability), true
-		},
-		curve: []anchor{
-			{perfect, 30, 0},
-			{good, 60, 10},
-			{difficult, 100, 20},
+		scaledBy: &scale{
+			// Open-Meteo's precipitation_probability is the ensemble's P(>0.1mm in the
+			// hour), while the amount comes from the deterministic run -- so the two can
+			// disagree, and a month at EDWN contains 2.7mm/h forecast at 3%.
+			//
+			// The weights are decision-shaped rather than a straight line: below 30% the
+			// hour is not in question, above 70% it is decided, and the middle is where
+			// the answer actually moves. A straight line would be the expected-cost
+			// reading; this one says what a go/no-go call does.
+			name: "probability",
+			unit: "%",
+			by: func(c conditions) (float64, bool) {
+				return float64(c.precipitationProbability), true
+			},
+			points: []scalePoint{
+				{0, 0.1},
+				{20, 0.2},
+				{50, 0.6},
+				{80, 1.0},
+			},
 		},
 	},
 	{
@@ -276,9 +344,9 @@ func (f factor) worseHigher() bool {
 // no-go anchor, which names a wall rather than a band: values on the last approach to it
 // keep the name of the band before it.
 //
-// Costs are rounded per factor rather than at the end so that the numbers in the breakdown
-// add up to the score that is displayed.
-func (f factor) evaluate(v float64) (cost int, sev severity, isNoGo bool) {
+// The cost is returned unrounded and unscaled: scoreVFR applies any scale and rounds once,
+// because rounding twice would stop the breakdown adding up to the score on screen.
+func (f factor) evaluate(v float64) (cost float64, sev severity, isNoGo bool) {
 	// Normalise so the curve always runs in ascending order, and compare in that space.
 	sign := 1.0
 	if !f.worseHigher() {
@@ -302,7 +370,7 @@ func (f factor) evaluate(v float64) (cost int, sev severity, isNoGo bool) {
 			return noGoCost, noGo, true
 		}
 		// No no-go for this factor: the curve stops rising rather than extrapolating.
-		return int(math.Round(costAt(last))), f.curve[last].severity, false
+		return costAt(last), f.curve[last].severity, false
 	}
 
 	// Find the segment (at(i), at(i+1)] that holds the value, and ramp across it.
@@ -311,7 +379,7 @@ func (f factor) evaluate(v float64) (cost int, sev severity, isNoGo bool) {
 		i++
 	}
 	frac := (n - at(i)) / (at(i+1) - at(i))
-	cost = int(math.Round(costAt(i) + frac*(costAt(i+1)-costAt(i))))
+	cost = costAt(i) + frac*(costAt(i+1)-costAt(i))
 
 	sev = f.curve[i+1].severity
 	if sev == noGo {
@@ -347,20 +415,33 @@ func scoreVFR(c conditions) (probability int, penalties []VfrPenalty, visibility
 			continue
 		}
 
-		cost, sev, isNoGo := f.evaluate(v)
+		raw, sev, isNoGo := f.evaluate(v)
 		if isNoGo {
 			slog.Debug("vfr no-go", "factor", f.name, "value", v, "unit", f.unit)
 			return 0, []VfrPenalty{{Factor: f.name, Value: v, Unit: f.unit, Severity: sev.String(), Cost: noGoCost}}, visibilityKnown
 		}
+
+		// A scale never applies to a no-go -- validate() rejects a factor carrying both --
+		// so the weight is only ever reached here, on an accumulating cost.
+		w, scaleValue, scaled := f.weightFor(c)
+		cost := int(math.Round(raw * w))
 		if cost <= 0 {
 			continue
 		}
 
-		slog.Debug("vfr penalty applied",
-			"factor", f.name, "value", v, "unit", f.unit, "severity", sev.String(), "cost", cost)
-		penalties = append(penalties, VfrPenalty{
+		penalty := VfrPenalty{
 			Factor: f.name, Value: v, Unit: f.unit, Severity: sev.String(), Cost: cost,
-		})
+		}
+		if scaled {
+			penalty.Scale = &VfrScale{Name: f.scaledBy.name, Value: scaleValue, Unit: f.scaledBy.unit}
+			slog.Debug("vfr penalty applied", "factor", f.name, "value", v, "unit", f.unit,
+				"severity", sev.String(), "cost", cost, f.scaledBy.name, scaleValue, "weight", w)
+		} else {
+			slog.Debug("vfr penalty applied",
+				"factor", f.name, "value", v, "unit", f.unit, "severity", sev.String(), "cost", cost)
+		}
+
+		penalties = append(penalties, penalty)
 		probability -= cost
 	}
 
@@ -423,6 +504,41 @@ func (f factor) validate() error {
 		}
 		if cur.cost <= prev.cost {
 			return fmt.Errorf("cost %v at anchor %d does not rise above %v", cur.cost, i, prev.cost)
+		}
+	}
+
+	return f.scaledBy.validate(f.curve[len(f.curve)-1].severity)
+}
+
+// validate checks a factor's scale. worst is the severity of the factor's last anchor:
+// scaling a no-go is refused rather than defined, because "does an unlikely deluge still
+// end the hour" is a real question and should be answered deliberately, in the open, and
+// not fall out of whichever multiplication happens to run first.
+func (s *scale) validate(worst severity) error {
+	if s == nil {
+		return nil
+	}
+	if worst == noGo {
+		return fmt.Errorf("is scaled by %s and also carries a no-go; pick one", s.name)
+	}
+	if len(s.points) < 2 {
+		return fmt.Errorf("scale %q needs at least two points, has %d", s.name, len(s.points))
+	}
+
+	for i, p := range s.points {
+		if p.weight < 0 || p.weight > 1 {
+			return fmt.Errorf("scale %q: weight %v at point %d is outside 0..1", s.name, p.weight, i)
+		}
+		if i == 0 {
+			continue
+		}
+		prev := s.points[i-1]
+		if p.at <= prev.at {
+			return fmt.Errorf("scale %q: %v at point %d does not rise above %v", s.name, p.at, i, prev.at)
+		}
+		if p.weight < prev.weight {
+			return fmt.Errorf("scale %q: weight %v at point %d falls below %v -- a likelier "+
+				"value must not cost less", s.name, p.weight, i, prev.weight)
 		}
 	}
 	return nil
