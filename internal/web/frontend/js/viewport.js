@@ -75,8 +75,14 @@ export function vfrMetrics() {
 // harder reason than taste: Chart.js neither wraps a tooltip line nor shrinks it to fit, so
 // the width of the longest line is a hard constraint. On a 360px screen the VFR breakdown
 // is what sets the ceiling, which is also why it drops the severity word there.
-export const TOOLTIP_FONT_WIDE = { title: 17, body: 16, padding: 10 };
-export const TOOLTIP_FONT_NARROW = { title: 15, body: 14, padding: 8 };
+// The padding is doing two jobs. The second is headroom: Chart.js sizes the tooltip box
+// from a measurement a few percent narrower than what it then draws, and clips whatever
+// overflows -- which is the end of the longest line, where the cost is. Because the
+// shortfall is proportional to the text, shortening the text does not fix it; padding is
+// the one lever that adds absolute room. These values were arrived at by measuring the
+// rendered box against the rendered text, not derived.
+export const TOOLTIP_FONT_WIDE = { title: 17, body: 16, padding: 14 };
+export const TOOLTIP_FONT_NARROW = { title: 15, body: 14, padding: 14 };
 
 export function tooltipFont() {
     return isNarrowViewport() ? TOOLTIP_FONT_NARROW : TOOLTIP_FONT_WIDE;

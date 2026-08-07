@@ -105,7 +105,7 @@ type VfrPoint struct {
 
 // VfrPenalty is one factor's contribution to an hour's score, as scored against vfrLimits.
 type VfrPenalty struct {
-	Factor   string  `json:"factor"`   // "crosswind gusts"
+	Factor   string  `json:"factor"`   // "crosswind gust spread"
 	Value    float64 `json:"value"`    // 7.27
 	Unit     string  `json:"unit"`     // "kn"
 	Severity string  `json:"severity"` // "good" | "difficult" | "critical" | "no-go"

@@ -18,10 +18,10 @@ test('an unscored hour is not reported as a clear one', () => {
 test('a penalty names the factor, its value and what it cost', () => {
     const lines = formatPenalties({
         probability: 98,
-        penalties: [{ factor: 'crosswind gusts', value: 4.244104822, unit: 'kn', severity: 'good', cost: 2 }],
+        penalties: [{ factor: 'crosswind gust spread', value: 4.244104822, unit: 'kn', severity: 'good', cost: 2 }],
     });
 
-    assert.deepEqual(lines, ['crosswind gusts 4.2 kn — good, −2']);
+    assert.deepEqual(lines, ['crosswind gust spread 4.2 kn — good, −2']);
 });
 
 test('penalties are listed in the order the backend sent them', () => {
@@ -75,6 +75,30 @@ test('an unscaled penalty is unchanged by the scale support', () => {
     });
 
     assert.deepEqual(lines, ['wind 12 kn — good, −7']);
+});
+
+// Chart.js sizes the tooltip box from something narrower than it draws, and clips the
+// overflow at the box edge -- taking the cost with it, which is the part worth reading.
+// Observed on a 360px screen as "crosswind gust spread 5.7 kn — good, −" with the digit
+// gone. Less text is the reliable lever; the severity word is what a reader can spare.
+test('the compact form drops the severity word but keeps the cost', () => {
+    const point = {
+        probability: 99,
+        penalties: [{ factor: 'crosswind gust spread', value: 5.7, unit: 'kn', severity: 'good', cost: 1 }],
+    };
+
+    assert.deepEqual(formatPenalties(point), ['crosswind gust spread 5.7 kn — good, −1']);
+    assert.deepEqual(formatPenalties(point, { compact: true }), ['crosswind gust spread 5.7 kn — −1']);
+});
+
+// A no-go has no cost to protect, and its word is shorter than the phrasing it replaces.
+test('a no-go keeps its word in the compact form', () => {
+    const lines = formatPenalties({
+        probability: 0,
+        penalties: [{ factor: 'visibility', value: 3.2, unit: 'km', severity: 'no-go', cost: 100 }],
+    }, { compact: true });
+
+    assert.deepEqual(lines, ['visibility 3.2 km — no-go']);
 });
 
 // Daylight is an ordinal (day / twilight / night), so it arrives without a unit and its

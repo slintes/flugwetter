@@ -246,7 +246,7 @@ var vfrLimits = []factor{
 		// absolute value: 5 gusting 15 is harder to land in than a steady 15. A wide
 		// spread is a sign of heavy gusting in its own right, whatever the steady
 		// crosswind is doing, which is why this carries a no-go of its own.
-		name:  "crosswind gusts",
+		name:  "crosswind gust spread",
 		unit:  "kn",
 		value: func(c conditions) (float64, bool) { return c.crosswindGusts - c.crosswind, true },
 		curve: []anchor{

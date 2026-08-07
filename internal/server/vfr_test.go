@@ -444,7 +444,7 @@ func TestScoreVFR_NoGos(t *testing.T) {
 			// nothing, and this one carries the hour on its own.
 			name:   "a gust spread past the limit",
 			with:   func(c conditions) conditions { c.crosswind, c.crosswindGusts = 2, 32; return c },
-			factor: "crosswind gusts",
+			factor: "crosswind gust spread",
 		},
 		{
 			name:   "heat past the limit",

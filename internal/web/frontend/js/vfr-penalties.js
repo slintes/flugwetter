@@ -8,7 +8,14 @@
 // node --test -- the same rule viewport.js, barbs.js and time.js follow.
 
 // formatPenalties turns one VFR point into the tooltip's lines.
-export function formatPenalties(point) {
+//
+// `compact` drops the severity word. Chart.js sizes the tooltip box from something narrower
+// than what it then draws -- the box comes out ~7% short at the phone font size, and the
+// overflow is clipped at the box edge, taking the cost with it: "crosswind gust spread
+// 5.7 kn — good, −1" renders as "... — good, −". Rather than fight the measurement, the
+// caller asks for less text where there is less room. The severity word is the part a
+// reader can spare; the number is not.
+export function formatPenalties(point, { compact = false } = {}) {
     if (!point || point.probability < 0) {
         return ['no forecast for this hour'];
     }
@@ -18,7 +25,7 @@ export function formatPenalties(point) {
         return ['nothing against it'];
     }
 
-    return penalties.map(formatPenalty);
+    return penalties.map(penalty => formatPenalty(penalty, compact));
 }
 
 // formatPenalty renders one factor: what it was, and what it cost.
@@ -26,7 +33,7 @@ export function formatPenalties(point) {
 // A no-go is not written as a cost. It did not subtract 100 points from something -- it
 // ended the hour on its own, and reporting it as arithmetic would invite the reader to add
 // it to the others.
-function formatPenalty(penalty) {
+function formatPenalty(penalty, compact) {
     const parts = [penalty.factor, formatValue(penalty.value, penalty.unit)];
 
     // A scaled factor was charged for what would happen, times how likely it is to happen.
@@ -37,10 +44,14 @@ function formatPenalty(penalty) {
     }
     const head = parts.filter(Boolean).join(' ');
 
+    // A no-go keeps its word either way: it is the reason the hour scored 0, and it is
+    // shorter than the cost phrasing it replaces.
     if (penalty.severity === 'no-go') {
         return `${head} — no-go`;
     }
-    return `${head} — ${penalty.severity}, −${penalty.cost}`;
+    return compact
+        ? `${head} — −${penalty.cost}`
+        : `${head} — ${penalty.severity}, −${penalty.cost}`;
 }
 
 // Values arrive at full model precision (7.265331983420373 kn). One decimal is as much as

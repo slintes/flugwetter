@@ -9,7 +9,7 @@
 
 import './plugins.js';
 import { getWindDirectionName } from './plugins.js';
-import { pinAxisWidth, AXIS_WIDTHS_WIDE } from './viewport.js';
+import { pinAxisWidth, AXIS_WIDTHS_WIDE, isNarrowViewport } from './viewport.js';
 import { formatPenalties } from './vfr-penalties.js';
 
 export const charts = {
@@ -120,6 +120,13 @@ export function initializeCharts() {
                     display: false // No legend needed
                 },
                 tooltip: {
+                    // No colour swatch. It indents every line but is not counted when
+                    // Chart.js sizes the box, so the longest line runs past the right edge
+                    // and loses its last character -- which is the cost, the part worth
+                    // reading. Seen with "crosswind gust spread 5.7 kn — good, −1" on a
+                    // 360px screen. This chart has one dataset, so the swatch identified
+                    // nothing anyway.
+                    displayColors: false,
                     callbacks: {
                         title: function(context) {
                             // Display time in local timezone with date and time
@@ -128,7 +135,7 @@ export function initializeCharts() {
                         // What the score lost and to what. Chart.js renders an array as
                         // one line each.
                         label: function(context) {
-                            return formatPenalties(context.raw);
+                            return formatPenalties(context.raw, { compact: isNarrowViewport() });
                         }
                     }
                 }
