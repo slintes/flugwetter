@@ -29,6 +29,25 @@ type ProcessedWeatherData struct {
 	// instead. The frontend must say so: silently presenting old weather as current is the
 	// one failure a flight-planning tool cannot afford.
 	Stale bool `json:"stale"`
+	// ModelRuns is when the models behind this forecast were last run, newest first. It is
+	// the forecast's own age, which GeneratedAt is not: that one only says when we fetched
+	// our copy.
+	ModelRuns []ModelRun `json:"model_runs,omitempty"`
+}
+
+// weatherBrowserCache is how long a browser may reuse a forecast payload without asking.
+// Model runs are hours apart, so this only ever collapses an accidental double-fetch.
+const weatherBrowserCache = time.Minute
+
+// ModelRun is one weather model's most recent run, as reported by Open-Meteo's per-model
+// metadata document.
+type ModelRun struct {
+	Model string `json:"model"` // "icon_d2"
+	// InitializedAt is the model's reference time -- the hour its observations describe.
+	InitializedAt time.Time `json:"initialized_at"`
+	// AvailableAt is when that run reached the API, typically an hour or more after it was
+	// initialized. This is what the poller compares; InitializedAt is what the UI shows.
+	AvailableAt time.Time `json:"available_at"`
 }
 
 type TemperaturePoint struct {
@@ -170,6 +189,12 @@ func Run() error {
 
 	mux := http.NewServeMux()
 
+	// Learn the current model runs before warming, so the first payload carries them and
+	// the poller has a baseline to compare against rather than treating every model as new
+	// on its first tick.
+	modelRuns.poll(ctx)
+	go watchModelRuns(ctx)
+
 	// pre cache weather data for the default airport only. Warming all of them would fire
 	// one very large Open-Meteo request per airfield before the first user arrives.
 	_, _ = GetWeatherData(ctx, defaultAirport)
@@ -184,6 +209,7 @@ func Run() error {
 	// API endpoints
 	mux.HandleFunc("GET /api/config", getConfig)
 	mux.HandleFunc("GET /api/weather", getWeatherData)
+	mux.HandleFunc("GET /api/status", getStatus)
 	if openAIPEnabled() {
 		mux.HandleFunc(tileRoute, serveOpenAIPTile)
 		slog.Info("openAIP overlay enabled")
@@ -260,6 +286,42 @@ func getConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// StatusResponse is what the frontend polls between forecasts. It exists so a client can
+// ask "is there anything new" for ~130 bytes instead of re-fetching 63KB of forecast.
+type StatusResponse struct {
+	// LatestInitializedAt is the newest model initialization time known. The frontend holds the one
+	// it rendered and reloads only when this differs, so it is the whole point of the
+	// endpoint. Zero when no poll has succeeded yet.
+	LatestInitializedAt time.Time `json:"latest_initialized_at"`
+	// GeneratedAt is when the default airport's cached payload was built. Informational:
+	// the reload decision keys off LatestRun.
+	GeneratedAt time.Time `json:"generated_at"`
+	// ModelRunsDegraded reports that run detection has stopped working, so refreshes have
+	// fallen back to the backstop TTL. Surfaced in the page rather than only logged: a
+	// silent fallback is one that runs for months before anyone notices.
+	ModelRunsDegraded bool `json:"model_runs_degraded"`
+}
+
+func getStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	// Polled every few minutes and the answer changes on its own schedule, so caching it
+	// would defeat the point of asking.
+	w.Header().Set("Cache-Control", "no-store")
+
+	_, degraded := modelRuns.snapshot()
+	status := StatusResponse{
+		LatestInitializedAt: modelRuns.latestInitializedAt(),
+		ModelRunsDegraded:   degraded,
+	}
+	if entry, ok := cachedEntry(defaultAirport.Identifier); ok {
+		status.GeneratedAt = entry.data.GeneratedAt
+	}
+
+	if err := json.NewEncoder(w).Encode(status); err != nil {
+		slog.Error("failed to encode status", "error", err)
+	}
+}
+
 func getWeatherData(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -279,13 +341,17 @@ func getWeatherData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Tell the browser how long this payload stays current. The backend refreshes on a
-	// 15-minute cycle, so a reload inside that window can be served from the local cache
-	// instead of re-fetching 136KB. Stale data is never cacheable: it must be re-requested
-	// as soon as upstream might be reachable again.
+	// Tell the browser this payload is good for a short window only -- long enough to
+	// absorb a double-fetch, far short of the backstop TTL.
+	//
+	// It deliberately does not track cacheDuration any more. The frontend now requests this
+	// only when /api/status says the model runs advanced, and serving it from the browser
+	// cache at that moment would hand back the forecast from the *previous* run: the one
+	// request that must not be answered from cache is the one made because the data
+	// changed. Stale data stays uncacheable for the same reason it always did.
 	if data.Stale {
 		w.Header().Set("Cache-Control", "no-store")
-	} else if remaining := cacheDuration - time.Since(data.GeneratedAt); remaining > 0 {
+	} else if remaining := weatherBrowserCache - time.Since(data.GeneratedAt); remaining > 0 {
 		w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d", int(remaining.Seconds())))
 	} else {
 		w.Header().Set("Cache-Control", "no-cache")

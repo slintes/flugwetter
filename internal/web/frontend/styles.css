@@ -320,6 +320,16 @@ canvas {
     overflow: hidden;
 }
 
+/* Pushed to the right of the range buttons on a roomy viewport. `margin-left: auto` in a
+   wrapping flex row only pushes within the current line, so when the bar wraps on a phone
+   this simply becomes its own centred line rather than needing a media query. */
+.model-run {
+    margin-left: auto;
+    color: #64748b;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
 .chart-instructions button {
     padding: 5px 15px;
     background: #4a6e9b;
@@ -420,6 +430,13 @@ canvas {
     border-radius: 12px;
     padding: 20px 30px;
     margin-bottom: 10px;
+}
+
+/* A degraded mechanism, not a failed load: the box is the same, but this reads as a notice
+   rather than as an error, and carries no button. */
+.degraded {
+    margin: 0;
+    font-size: 0.95rem;
 }
 
 .error button {

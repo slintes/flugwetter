@@ -146,7 +146,9 @@ func TestGetWeatherData_ServesStaleWithFlag(t *testing.T) {
 		return nil, errors.New("open-meteo unreachable")
 	})
 
-	generatedAt := time.Now().Add(-42 * time.Minute)
+	// Expressed against cacheDuration rather than as a fixed 42 minutes, which silently
+	// stopped being "expired" the moment the backstop TTL grew.
+	generatedAt := time.Now().Add(-2 * cacheDuration)
 	cache.mutex.Lock()
 	cache.entries[testAirport.Identifier] = &cacheEntry{
 		data:      &ProcessedWeatherData{GeneratedAt: generatedAt},

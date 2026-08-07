@@ -4,9 +4,32 @@ import { charts } from './charts.js';
 import { applyInitialZoomOnce } from './panzoom.js';
 import { getCurrentAirportId } from './airports.js';
 import { toEpochMs } from './time.js';
+import { shouldReload, latestModelRun, formatModelRun } from './status.js';
 
 // When the data on screen was last replaced.
 let lastLoadedAt = Date.now();
+
+// The model run behind the forecast currently on screen. The status poll compares against
+// this, so it is what makes a reload conditional rather than periodic.
+let renderedRun = null;
+
+// The two conditions the error area can be in. They are tracked separately because they are
+// different events: one means there is no forecast, the other means there is one but the
+// mechanism that keeps it current has stopped working.
+let loadFailed = false;
+let runsDegraded = false;
+
+// renderErrorArea shows the box if either condition holds, and each message independently.
+//
+// The Retry button belongs only to the load failure. Retrying does nothing for a backend
+// poller that cannot reach Open-Meteo's metadata, and offering a button that cannot help is
+// worse than offering none.
+function renderErrorArea() {
+    document.getElementById('errorMessage').hidden = !loadFailed;
+    document.getElementById('retryButton').hidden = !loadFailed;
+    document.getElementById('degradedMessage').hidden = !runsDegraded;
+    document.getElementById('error').style.display = loadFailed || runsDegraded ? 'block' : 'none';
+}
 
 // The scrim is delayed rather than shown immediately: the backend answers a warm cache in
 // single-digit milliseconds, so an instant spinner would blink on every 15-minute refresh
@@ -29,11 +52,10 @@ function hideLoadingScrim() {
 }
 
 export async function loadWeatherData() {
-    const errorElement = document.getElementById('error');
-
     try {
         showLoadingScrim();
-        errorElement.style.display = 'none';
+        loadFailed = false;
+        renderErrorArea();
 
         const airport = getCurrentAirportId();
         const url = airport
@@ -53,7 +75,8 @@ export async function loadWeatherData() {
     } catch (error) {
         console.error('Error loading weather data:', error);
         hideLoadingScrim();
-        errorElement.style.display = 'block';
+        loadFailed = true;
+        renderErrorArea();
     }
 }
 
@@ -86,8 +109,20 @@ function updateStaleBanner(data) {
     element.style.display = 'block';
 }
 
+// The forecast's own age, which generated_at is not: that one says when we fetched our
+// copy, this says when the weather model behind it last ran.
+function updateModelRunLabel(data) {
+    renderedRun = latestModelRun(data.model_runs);
+
+    const element = document.getElementById('modelRun');
+    const label = formatModelRun(renderedRun);
+    element.textContent = label;
+    element.hidden = label === '';
+}
+
 export function updateCharts(data) {
     updateStaleBanner(data);
+    updateModelRunLabel(data);
     lastLoadedAt = Date.now();
 
     // Guarded like wind_data and vfr_data below. Unguarded, a payload missing this one
@@ -247,19 +282,49 @@ export function updateCharts(data) {
 }
 
 
-// Auto-refresh. The interval matches the backend's cache TTL, so a refresh lands roughly
-// when new data becomes available.
-export const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+// How often to ask whether anything changed. Far more often than the forecast actually
+// changes -- the models run every three hours -- because the question costs ~130 bytes and
+// the answer is almost always no.
+export const STATUS_POLL_INTERVAL_MS = 5 * 60 * 1000;
+
+// The clock fallback, used only when run times are unknown on one side or the other. This
+// is what the refresh interval used to be unconditionally.
+export const MAX_AGE_MS = 15 * 60 * 1000;
+
+// checkForNewData asks the backend what run it is on and reloads only if that differs from
+// what is on screen. A network failure here is not surfaced: the forecast already displayed
+// is still valid, and the next poll will try again.
+export async function checkForNewData() {
+    let status = null;
+    try {
+        const response = await fetch('/api/status');
+        if (response.ok) {
+            status = await response.json();
+        }
+    } catch (error) {
+        console.error('Error polling status:', error);
+    }
+
+    runsDegraded = Boolean(status && status.model_runs_degraded);
+    renderErrorArea();
+
+    const latest = status ? status.latest_initialized_at : null;
+    if (shouldReload(renderedRun, latest, Date.now() - lastLoadedAt, MAX_AGE_MS)) {
+        await loadWeatherData();
+    }
+}
 
 export function startAutoRefresh() {
-    setInterval(loadWeatherData, REFRESH_INTERVAL_MS);
+    setInterval(checkForNewData, STATUS_POLL_INTERVAL_MS);
 
     // A background tab's timers are throttled and a sleeping phone's do not run at all, so
     // the interval alone can leave a forecast hours old on screen the moment the tab is
     // looked at again -- which for this app is exactly when it is about to be trusted.
+    // Unconditional now, because asking is cheap: the check itself decides whether anything
+    // needs fetching.
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && Date.now() - lastLoadedAt >= REFRESH_INTERVAL_MS) {
-            loadWeatherData();
+        if (document.visibilityState === 'visible') {
+            checkForNewData();
         }
     });
 }

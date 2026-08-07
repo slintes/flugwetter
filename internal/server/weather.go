@@ -146,7 +146,11 @@ var (
 	cache = &WeatherCache{
 		entries: make(map[string]*cacheEntry),
 	}
-	cacheDuration = 15 * time.Minute
+	// The backstop, not the schedule. What normally refreshes the forecast is a model
+	// announcing a new run (see modelruns.go); this only decides how long an entry may
+	// live when that mechanism is unavailable, so it is set by how stale a forecast may
+	// quietly get, not by how often the data changes.
+	cacheDuration = time.Hour
 	// apiURLTemplate takes latitude and longitude; everything else about the query is
 	// identical for every airport.
 	//
@@ -182,6 +186,15 @@ func GetWeatherData(ctx context.Context, airport Airport) (*ProcessedWeatherData
 
 	// Fetch new data
 	return fetchAndCacheWeatherData(ctx, airport)
+}
+
+// invalidateAll drops every airport's entry, which is what a new model run calls for: runs
+// are global, so one arriving makes all thirteen stale at the same instant.
+func (c *WeatherCache) invalidateAll() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	clear(c.entries)
 }
 
 // cachedEntry returns the stored entry for an airport regardless of its age.
@@ -304,11 +317,18 @@ func resolveDaylight(ctx context.Context, airport Airport, times []string) map[s
 
 // processWeatherData converts API response to frontend-friendly format
 func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, airport Airport) *ProcessedWeatherData {
+	// The runs are stamped here rather than at serve time because they describe *this*
+	// data: they are the provenance of the payload, and a cached entry must keep the runs
+	// it was built from even after newer ones appear. It also keeps the cached payload
+	// immutable, which is what lets it be shared between goroutines without copying.
+	runs, _ := modelRuns.snapshot()
+
 	processed := &ProcessedWeatherData{
 		TemperatureData: make([]TemperaturePoint, 0),
 		CloudData:       make([]CloudPoint, 0),
 		WindData:        make([]WindPoint, 0),
 		GeneratedAt:     time.Now(),
+		ModelRuns:       runs,
 	}
 
 	// One lookup per date, before the loop, rather than two per hour inside it.

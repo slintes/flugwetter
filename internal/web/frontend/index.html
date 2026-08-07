@@ -35,13 +35,25 @@
                 <button type="button" data-hours="48">48h</button>
                 <button type="button" data-hours="72">72h</button>
                 <button type="button" data-hours="all">All</button>
+                <!-- When the weather model behind the forecast last ran, which is the
+                     forecast's own age. Filled in by updateModelRunLabel; hidden until
+                     there is a run to name. -->
+                <span class="model-run" id="modelRun" hidden></span>
             </div>
 
             <!-- Above the charts on purpose: below them it sat off-screen, so a failed load
                  looked like nothing had happened. -->
+            <!-- Two conditions share this box. The first means there is no forecast at all
+                 and Retry is worth offering; the second means the forecast is fine but the
+                 backend has stopped noticing new model runs, where retrying from here
+                 achieves nothing. Both are rendered by renderErrorArea. -->
             <div class="error" id="error" role="alert" style="display: none;">
-                <p>Failed to load weather data. Please try again later.</p>
-                <button type="button" id="retryButton">Retry</button>
+                <p id="errorMessage" hidden>Failed to load weather data. Please try again later.</p>
+                <button type="button" id="retryButton" hidden>Retry</button>
+                <p class="degraded" id="degradedMessage" hidden>
+                    Cannot reach the weather model schedule, so new forecasts may take up to
+                    an hour to appear. The data shown is still valid.
+                </p>
             </div>
 
             <!-- Shown when the backend served an expired cache entry because Open-Meteo was
