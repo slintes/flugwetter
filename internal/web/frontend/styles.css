@@ -320,11 +320,13 @@ canvas {
     overflow: hidden;
 }
 
-/* Pushed to the right of the range buttons on a roomy viewport. `margin-left: auto` in a
-   wrapping flex row only pushes within the current line, so when the bar wraps on a phone
-   this simply becomes its own centred line rather than needing a media query. */
+/* Sits with the range buttons rather than being pushed to the edge. `margin-left: auto`
+   was tried and is wrong here: an auto margin absorbs all the free space in the line, so
+   `justify-content: center` has none left to work with and the hint and buttons end up
+   hard against the left edge -- 219px off centre on a 1400px viewport. A fixed margin
+   separates the label from the last button without taking the centring away. */
 .model-run {
-    margin-left: auto;
+    margin-left: 10px;
     color: #64748b;
     font-size: 0.85rem;
     white-space: nowrap;
