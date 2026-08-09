@@ -18,7 +18,10 @@ make hooks                    # install the pre-commit hook (runs the same check
 make build                    # OCI image, tagged :<commit> and :latest
 make run                      # podman run, with the healthcheck attached
 make push
+make deploy                   # build, push, restart on the server — see the deploy skill
 ```
+
+Deploying has its own skill, `.claude/skills/deploy/SKILL.md`: the useful part is the checks either side of `make deploy`, and the fact that **the app runs on host port 8082** — 8080 on that host is an unrelated vhost that answers 200, so verifying against it looks like a successful check of a deployment that never happened.
 
 Env: `OPENAIP_API_KEY` (openAIP overlay on the map picker), `FLUGWETTER_AIRPORTS_FILE` (replaces the embedded airport list), `FLUGWETTER_LOG_LEVEL` (`debug` traces every VFR scoring decision), `FLUGWETTER_DEV` (serve the frontend from disk).
 
