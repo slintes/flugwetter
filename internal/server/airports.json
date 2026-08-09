@@ -213,5 +213,69 @@
     "opening_hours": "PPR 0500 (0400)-2100 (2000), only daylight and VMC, attended or unattended",
     "opening_hours_source": "AIP VFR AD 2-43, 23 JUL 2026",
     "website": "https://www.flugplatz-hamm.de/"
+  },
+  {
+    "identifier": "EDWZ",
+    "name": "Baltrum",
+    "latitude": 53.72485,
+    "longitude": 7.37315,
+    "runways": [
+      "09/27"
+    ],
+    "runway_headings": [
+      94.5,
+      274.5
+    ],
+    "opening_hours": "SUM PPR 0600-1100, 1300-1700; WIN PPR SR-30 - SS+30",
+    "opening_hours_source": "AIP VFR AD 2-12, 28 MAY 2026",
+    "website": "https://www.baltrum-flug.de/flugplatz-infos.php"
+  },
+  {
+    "identifier": "EDWL",
+    "name": "Langeoog",
+    "latitude": 53.74248,
+    "longitude": 7.49693,
+    "runways": [
+      "05/23"
+    ],
+    "runway_headings": [
+      54.9,
+      234.9
+    ],
+    "opening_hours": "SUM 0700-1100, 1300-1700; WIN PPR",
+    "opening_hours_source": "AIP VFR AD 2-60, 18 SEP 2025",
+    "website": "https://www.langeoog.de/beitraege/flugplatz-langeoog"
+  },
+  {
+    "identifier": "EDHE",
+    "name": "Uetersen/Heist",
+    "latitude": 53.64718,
+    "longitude": 9.7028,
+    "runways": [
+      "09/27"
+    ],
+    "runway_headings": [
+      93.8,
+      273.8
+    ],
+    "opening_hours": "SUM bis/til 30 SEP Mon, Tue, Wed 0700-SS+30/1800, O/T PPR; Thu, Fri, Sat, Sun 0600-SS+30/1900, O/T PPR; SUM ab/from 01 OCT 0700-SS+30/1800, O/T PPR; WIN 0800-SS+30/1900, O/T PPR",
+    "opening_hours_source": "AIP VFR AD 2-104, 30 APR 2026",
+    "website": "https://edhe.de/"
+  },
+  {
+    "identifier": "EDWO",
+    "name": "Osnabrück-Atterheide",
+    "latitude": 52.28683,
+    "longitude": 7.96983,
+    "runways": [
+      "09/27"
+    ],
+    "runway_headings": [
+      90.4,
+      270.4
+    ],
+    "opening_hours": "SUM 0700-SS/1800, O/T PPR; WIN 0900-SS, O/T PPR",
+    "opening_hours_source": "AIP VFR AD 2-82, 28 MAY 2026",
+    "website": "https://atterheide.de/flugplatzdaten/"
   }
 ]

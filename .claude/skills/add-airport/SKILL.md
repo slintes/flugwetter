@@ -50,6 +50,39 @@ for that airfield is just quietly biased.
 
 `runways` is the published designator, for display only.
 
+### Getting the geometry: Overpass
+
+Overpass is the query API for OpenStreetMap data (`https://overpass-api.de/api/interpreter`,
+POST the query as the `data` parameter). Two queries per airfield:
+
+```
+[out:json][timeout:60];nwr["icao"="EDWZ"]["aeroway"="aerodrome"];out center tags;
+[out:json][timeout:60];way(around:2500,53.72485,7.37315)["aeroway"="runway"];out geom tags;
+```
+
+The first gives `latitude`/`longitude`; the second gives each runway as a node list, plus a
+`ref` tag that usually carries the designator. Take the true initial bearing from the first
+node to the last, and its reciprocal for the other end:
+
+```python
+y = sin(dlon) * cos(lat2)
+x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dlon)
+bearing = (degrees(atan2(y, x)) + 360) % 360
+```
+
+**It is rate-limited** — HTTP 429 after two airfields in quick succession, and the backoff
+outlasts a foreground command's timeout. Run it in the background with sleeps between
+queries and poll the output file, rather than in a blocking call.
+
+Sanity-check the result against the designator: they should agree to within about 10°, since
+the designator is the magnetic heading rounded. Langeoog's "05/23" came out as true
+54.9/234.9 — 5° off, which is the magnetic variation and exactly why the designator is not
+usable directly. A result tens of degrees away means the wrong way was matched.
+
+If OSM returns two nearly-parallel ways for what the AIP calls one runway (Uetersen has a
+second grass way 3° off the ref'd one), it is the same strip digitised twice or a parallel
+glider strip. Use the `ref`'d one; the difference is immaterial to a crosswind.
+
 ## Opening hours: read them from the AIP
 
 The DFS AIP VFR is the authoritative source and it is worth the trouble. When this project
@@ -62,8 +95,22 @@ It cannot be scraped. Each step below has a specific way of failing:
    "Browser Access" in the global CLAUDE.md). `WebFetch` cannot do this.
 2. The search input `#searchAirfield` exists but is **hidden**. Click
    `a[href='#popupSearch']` first, or the fill times out after 30s.
-3. Type the ICAO, wait ~2.5s for the suggestions to populate, then click the suggestion
-   whose text contains the ICAO.
+3. Type the ICAO, wait ~2.5s for the suggestions to populate, then click the right
+   suggestion — **and "contains the ICAO" is not the right test.** Searching `EDHE` and
+   selecting with `:has-text('EDHE')` lands on **Oedheim EDGO**, because "O*edhe*im"
+   contains the string. The only symptom is that the page then has no `AD 2-` link; had
+   Oedheim happened to have one, this would have produced a whole entry of the wrong
+   airfield's data with nothing to flag it.
+
+   Search by **name** and match the ICAO as a trailing token:
+
+   ```js
+   [...document.querySelectorAll('.dropdown-menu a, .dropdown-item')]
+       .findIndex(a => /\bEDHE$/.test((a.textContent || '').trim()))
+   ```
+
+   The suggestion text is `Uetersen/Heist EDHE`, so the ICAO is always last. This also
+   resolves the ICAO for you when you only know the name.
 4. On the airfield's chapter page, follow the link whose text starts with **`AD 2-`**. The
    other links (`<ICAO> <name> 1`, `2`, `3`) are the visual approach charts.
 5. **That page is a base64-embedded PNG, not text.** `document.body.innerText` is ~200
@@ -114,7 +161,16 @@ Check the URL returns 200 and store it **after** any redirect (`edwj.de` →
 airfield's own address, which is the most reliable place to find it.
 
 A `curl` failure is not proof a site is down: `flugplatz-hamm.de` fails TLS from this
-sandbox and loads fine in a browser. Confirm in a browser before discarding a URL.
+sandbox and loads fine in a browser. Confirm in a browser before discarding a URL — and
+equally, confirm before *keeping* one. Two failure modes seen so far:
+
+- **Genuinely dead.** `flugplatz.langeoog.de` is the URL every source cites for Langeoog and
+  it resolves nowhere. The island's own `Flugplatz Langeoog` page was used instead — the
+  operator's site is a good fallback when the airfield's own has lapsed.
+- **Broken certificate.** `edhe.de` serves a certificate for another name, so HTTPS fails
+  while HTTP redirects fine to the real host. Ask before downgrading a stored link to
+  `http://` or pointing it at the redirect target; which one is wanted is a judgement call
+  about what the reader should see in the URL bar, not a technical one.
 
 ## When done
 
