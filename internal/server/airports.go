@@ -37,6 +37,22 @@ type Airport struct {
 	RunwayHeadings []float64 `json:"runway_headings"`
 	// Pinned sorts this airfield to the top of the list and makes it the default.
 	Pinned bool `json:"pinned,omitempty"`
+	// OpeningHours is the airfield's published operating times, copied verbatim from the
+	// AIP's TIME block -- UTC, with SS+30, SR-30, ECET, LDG, O/T PPR and the
+	// bracketed-summer notation left intact.
+	//
+	// Free text on purpose. Parsing it into a schedule meant discarding exactly the parts
+	// that matter (sunset caps, lunch breaks, PPR, seasons that ignore the daylight-saving
+	// boundary) to draw a rectangle that would assert an hour is open. The published line
+	// says what the AIP says and lets the reader judge it.
+	OpeningHours string `json:"opening_hours,omitempty"`
+	// OpeningHoursSource is the AIP page and its date, e.g. "AIP VFR AD 2-78, 12 DEC 2024".
+	// The AIP moves on a 28-day AIRAC cycle and this file does not, so the date is what
+	// makes the drift visible instead of silent.
+	OpeningHoursSource string `json:"opening_hours_source,omitempty"`
+	// Website is the airfield's own page, deep-linked to its opening times where it
+	// publishes such a page. It is how a reader checks the line above against the source.
+	Website string `json:"website,omitempty"`
 }
 
 // LatString and LonString format the coordinates for the two consumers that need strings:

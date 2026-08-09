@@ -72,6 +72,51 @@ func TestLoadAirportsEmbedded(t *testing.T) {
 	}
 }
 
+// The opening hours are free text and nothing parses them, so the only thing worth pinning
+// is that an entry carries all three parts or is recognisably incomplete. A half-filled
+// entry renders a line with a dangling separator, which reads as a bug rather than as an
+// airfield that publishes nothing.
+func TestLoadAirportsEmbedded_OpeningHoursAreComplete(t *testing.T) {
+	t.Setenv(airportsFileEnv, "")
+
+	if err := loadAirports(); err != nil {
+		t.Fatalf("loadAirports() failed: %v", err)
+	}
+
+	for _, airport := range airports {
+		if airport.OpeningHours == "" {
+			// Legitimate: an airfield whose hours have not been researched shows no line.
+			continue
+		}
+		if airport.OpeningHoursSource == "" {
+			t.Errorf("%s has opening hours but no source -- the AIP page and its date are "+
+				"what make the AIRAC drift visible", airport.Identifier)
+		}
+		if airport.Website == "" {
+			t.Errorf("%s has opening hours but no website to check them against", airport.Identifier)
+		}
+	}
+}
+
+// The three fields are omitempty, so an airfield without them must be absent from the JSON
+// rather than present and empty -- the frontend hides the line on absence.
+func TestAirport_OpeningHoursOmittedWhenUnset(t *testing.T) {
+	encoded, err := json.Marshal(Airport{
+		Identifier:     "TEST",
+		Name:           "Test",
+		RunwayHeadings: []float64{90, 270},
+	})
+	if err != nil {
+		t.Fatalf("failed to encode: %v", err)
+	}
+
+	for _, field := range []string{"opening_hours", "opening_hours_source", "website"} {
+		if strings.Contains(string(encoded), field) {
+			t.Errorf("%s present in %s, want it omitted when unset", field, encoded)
+		}
+	}
+}
+
 func TestLoadAirportsFromFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "airports.json")
 	content := `[

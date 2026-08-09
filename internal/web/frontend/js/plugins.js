@@ -10,6 +10,7 @@
 import { weatherCodeToIcon } from './weather-icons.js';
 import { barbComponents, isCalm } from './barbs.js';
 import { axisWidths, isNarrowViewport, vfrMetrics, tooltipFont } from './viewport.js';
+import { bands, visibleBands, NIGHT_FILL } from './bands.js';
 
 // Cache for weather icons
 const weatherIconCache = {};
@@ -93,6 +94,44 @@ Chart.Interaction.modes.timeNearest = function(chart, e, options, useFinalPositi
 // pass, and a plain value is what guarantees both see the same number; a scriptable font
 // re-resolves per call, which is a needless way to invite the two apart. Rewriting them
 // here is also what makes them follow a resize, exactly as the axis widths do below.
+// backgroundBands shades the hours that are night on all four charts.
+//
+// beforeDatasetsDraw, so it sits behind the data rather than over it -- an afterDraw hook
+// would put a grey wash on top of the wind barbs and the VFR icons. Positions come from
+// scales.x, which is what makes the bands pan and zoom with everything else instead of
+// staying nailed to the canvas.
+Chart.register({
+    id: 'backgroundBands',
+    beforeDatasetsDraw(chart) {
+        const scale = chart.scales.x;
+        const area = chart.chartArea;
+        if (!scale || !area) {
+            return;
+        }
+
+        const visible = visibleBands(bands.night, scale.min, scale.max);
+        if (visible.length === 0) {
+            return;
+        }
+
+        const ctx = chart.ctx;
+        ctx.save();
+        // Clipped to the plot area: without this a band runs out over the axis labels,
+        // which on these charts are the only thing separating four stacked cards.
+        ctx.beginPath();
+        ctx.rect(area.left, area.top, area.right - area.left, area.bottom - area.top);
+        ctx.clip();
+
+        ctx.fillStyle = NIGHT_FILL;
+        for (const band of visible) {
+            const from = scale.getPixelForValue(band.from);
+            const to = scale.getPixelForValue(band.to);
+            ctx.fillRect(from, area.top, to - from, area.bottom - area.top);
+        }
+        ctx.restore();
+    }
+});
+
 Chart.register({
     id: 'responsiveAxes',
     beforeLayout: function(chart) {

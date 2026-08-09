@@ -320,6 +320,30 @@ canvas {
     overflow: hidden;
 }
 
+/* The airfield's operating hours, under the picker. Wraps rather than truncating: the
+   longest entry (Norderney, four seasonal ranges) is a paragraph on a phone, and a clipped
+   opening time is worse than a tall one. */
+.opening-hours {
+    margin: 8px 0 0;
+    text-align: center;
+    font-size: 0.85rem;
+    color: #94a3b8;
+    line-height: 1.5;
+}
+
+.opening-hours a {
+    color: #7ea6d8;
+}
+
+.opening-hours-source {
+    color: #64748b;
+}
+
+.opening-hours-separator {
+    margin: 0 8px;
+    color: #475569;
+}
+
 /* Sits with the range buttons rather than being pushed to the edge. `margin-left: auto`
    was tried and is wrong here: an auto margin absorbs all the free space in the line, so
    `justify-content: center` has none left to work with and the hint and buttons end up

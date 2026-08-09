@@ -5,6 +5,7 @@ import { applyInitialZoomOnce } from './panzoom.js';
 import { getCurrentAirportId } from './airports.js';
 import { toEpochMs } from './time.js';
 import { shouldReload, latestModelRun, formatModelRun } from './status.js';
+import { setNightBands } from './bands.js';
 
 // When the data on screen was last replaced.
 let lastLoadedAt = Date.now();
@@ -123,6 +124,9 @@ function updateModelRunLabel(data) {
 export function updateCharts(data) {
     updateStaleBanner(data);
     updateModelRunLabel(data);
+    // Before the charts update, so the first frame after a load already has them: the
+    // plugin reads this at draw time and would otherwise paint one frame without shading.
+    setNightBands(data.night_periods);
     lastLoadedAt = Date.now();
 
     // Guarded like wind_data and vfr_data below. Unguarded, a payload missing this one

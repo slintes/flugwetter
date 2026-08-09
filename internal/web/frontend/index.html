@@ -24,6 +24,10 @@
                 <select id="airportSelect" aria-label="Select airport"></select>
                 <button type="button" id="mapPickerButton" title="Pick an airport on the map">Map…</button>
             </div>
+            <!-- The selected airfield's published operating times, verbatim from the AIP,
+                 with the AIP page it came from and a link to the airfield's own site.
+                 Filled by updateOpeningHours; hidden when the airfield has none. -->
+            <p class="opening-hours" id="openingHours" hidden></p>
         </header>
 
         <main>

@@ -33,6 +33,15 @@ type ProcessedWeatherData struct {
 	// the forecast's own age, which GeneratedAt is not: that one only says when we fetched
 	// our copy.
 	ModelRuns []ModelRun `json:"model_runs,omitempty"`
+	// NightPeriods are the stretches the charts shade grey, bounded by civil twilight --
+	// the same boundary the VFR score zeroes an hour against, so the two cannot disagree.
+	NightPeriods []Interval `json:"night_periods,omitempty"`
+}
+
+// Interval is a half-open stretch of time [From, To).
+type Interval struct {
+	From time.Time `json:"from"`
+	To   time.Time `json:"to"`
 }
 
 // weatherBrowserCache is how long a browser may reuse a forecast payload without asking.

@@ -26,6 +26,11 @@ the hour could not be scored at all and is rendered as "no data", not as bad wea
 Every limit and every penalty lives in one table, `vfrLimits` in `internal/server/vfr.go`.
 Hovering an hour on the VFR chart lists exactly what its score lost and to what.
 
+All four charts shade the hours that are night, bounded by civil twilight — the same
+boundary that scores those hours 0, so the shading and the score always agree. Each
+airfield's published operating times are shown under the picker, copied verbatim from the
+AIP with the page it came from and a link to the airfield's own site.
+
 Crosswind is computed against **true** runway headings taken from OpenStreetMap geometry
 rather than the published magnetic designators, and a multi-runway field is scored on its
 best runway.

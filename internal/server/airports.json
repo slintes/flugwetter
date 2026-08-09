@@ -4,104 +4,214 @@
     "name": "Nordhorn-Lingen",
     "latitude": 52.4575,
     "longitude": 7.185,
-    "runways": ["05/23"],
-    "runway_headings": [55.0, 235.0],
-    "pinned": true
+    "runways": [
+      "05/23"
+    ],
+    "runway_headings": [
+      55.0,
+      235.0
+    ],
+    "pinned": true,
+    "opening_hours": "SUM 0800-1800/SS+30; WIN 0800-1800/SS",
+    "opening_hours_source": "AIP VFR AD 2-78, 12 DEC 2024",
+    "website": "https://www.flugplatz-nordhorn-lingen.de/flugplatz.php?language=de"
   },
   {
     "identifier": "EDWG",
     "name": "Wangerooge",
     "latitude": 53.78256,
     "longitude": 7.91957,
-    "runways": ["09/27", "01/19"],
-    "runway_headings": [94.1, 274.1, 15.5, 195.5]
+    "runways": [
+      "09/27",
+      "01/19"
+    ],
+    "runway_headings": [
+      94.1,
+      274.1,
+      15.5,
+      195.5
+    ],
+    "opening_hours": "SUM 0600-1000 (LDG-1100), 1300-SS/1700, O/T PPR; WIN 0800-1100 (LDG-1200), 1400-SS, O/T PPR",
+    "opening_hours_source": "AIP VFR AD 2-106, 28 MAY 2026",
+    "website": "https://www.edwg.de/piloten-infos/oeffnungszeiten/"
   },
   {
     "identifier": "EDWY",
     "name": "Norderney",
     "latitude": 53.70691,
     "longitude": 7.23006,
-    "runways": ["08/26"],
-    "runway_headings": [85.8, 265.8]
+    "runways": [
+      "08/26"
+    ],
+    "runway_headings": [
+      85.8,
+      265.8
+    ],
+    "opening_hours": "SUM 0600-1700 until 30 SEP, 1 OCT 0700-1400, O/T PPR; WIN 15 NOV 0800-1500, 16 NOV-28 FEB 0800-1230, 1 MAR 0800-1500, O/T PPR",
+    "opening_hours_source": "AIP VFR AD 2-77, 02 APR 2026",
+    "website": "https://flughafen-norderney.de/flugplatz/information/"
   },
   {
     "identifier": "EDWJ",
     "name": "Juist",
     "latitude": 53.68127,
     "longitude": 7.05651,
-    "runways": ["07/25"],
-    "runway_headings": [76.3, 256.3]
+    "runways": [
+      "07/25"
+    ],
+    "runway_headings": [
+      76.3,
+      256.3
+    ],
+    "opening_hours": "SUM 0530-1730/SS+30, O/T PPR; WIN 0700/SR-30-1130, 1300-1630/SS+30, O/T PPR; Sat, Sun, HOL 0730-1630/SS+30, O/T PPR",
+    "opening_hours_source": "AIP VFR AD 2-52, 03 APR 2025",
+    "website": "https://www.flughafen-juist.de/flughafen"
   },
   {
     "identifier": "EDWI",
     "name": "Wilhelmshaven-Mariensiel",
     "latitude": 53.50216,
     "longitude": 8.05224,
-    "runways": ["02/20", "16/34"],
-    "runway_headings": [21.9, 201.9, 155.2, 335.2]
+    "runways": [
+      "02/20",
+      "16/34"
+    ],
+    "runway_headings": [
+      21.9,
+      201.9,
+      155.2,
+      335.2
+    ],
+    "opening_hours": "SUM 0700-SS+30/1800, O/T PPR; WIN 0800-SS+30/1700, O/T PPR",
+    "opening_hours_source": "AIP VFR AD 2-109, 05 FEB 2026",
+    "website": "https://www.edwi.info/"
   },
   {
     "identifier": "EDWE",
     "name": "Emden",
     "latitude": 53.39125,
     "longitude": 7.22732,
-    "runways": ["07/25"],
-    "runway_headings": [72.7, 252.7]
+    "runways": [
+      "07/25"
+    ],
+    "runway_headings": [
+      72.7,
+      252.7
+    ],
+    "opening_hours": "SUM Mon-Fri 0500-1800, Sat, Sun+HOL 0600-1600, O/T PPR; WIN Mon-Fri 0700-1700, Sat, Sun+HOL 0800-1600, O/T PPR",
+    "opening_hours_source": "AIP VFR AD 2-31, 28 MAY 2026",
+    "website": "https://aviation-park-north-sea.com/de/"
   },
   {
     "identifier": "EDWF",
     "name": "Leer-Papenburg",
     "latitude": 53.27187,
     "longitude": 7.442,
-    "runways": ["08/26"],
-    "runway_headings": [79.1, 259.1]
+    "runways": [
+      "08/26"
+    ],
+    "runway_headings": [
+      79.1,
+      259.1
+    ],
+    "opening_hours": "SUM Mon-Fri 0600-1700/MAX SS, Sat, Sun+HOL 0700-1700/MAX SS, O/T PPR; WIN Mon-Fri 0700-SS, Sat, Sun+HOL 0800-SS, O/T PPR",
+    "opening_hours_source": "AIP VFR AD 2-62, 30 APR 2026",
+    "website": "https://flugplatz-leer-papenburg.de/informationen/betriebsinformationen/"
   },
   {
     "identifier": "EDWC",
     "name": "Damme",
     "latitude": 52.48757,
     "longitude": 8.1851,
-    "runways": ["10/28"],
-    "runway_headings": [103.8, 283.8]
+    "runways": [
+      "10/28"
+    ],
+    "runway_headings": [
+      103.8,
+      283.8
+    ],
+    "opening_hours": "SUM Mon-Fri 0800-SS+30/1800, Sat, Sun, HOL 0700-SS+30/1800, O/T PPR; WIN Mon-Fri 0900-SS+30, Sat, Sun, HOL 0800-SS+30",
+    "opening_hours_source": "AIP VFR AD 2-24, 25 JUN 2026",
+    "website": "https://flugplatz-damme.de/"
   },
   {
     "identifier": "EDDG",
     "name": "Münster/Osnabrück",
     "latitude": 52.13439,
     "longitude": 7.68366,
-    "runways": ["07/25"],
-    "runway_headings": [71.0, 251.0]
+    "runways": [
+      "07/25"
+    ],
+    "runway_headings": [
+      71.0,
+      251.0
+    ],
+    "opening_hours": "H 24, CTR H 24",
+    "opening_hours_source": "AIP VFR AD 2-72, 25 JUN 2026",
+    "website": "https://www.fmo.de/en/general-aviation/"
   },
   {
     "identifier": "EDLS",
     "name": "Stadtlohn-Vreden",
     "latitude": 51.99558,
     "longitude": 6.8418,
-    "runways": ["11/29"],
-    "runway_headings": [105.9, 285.9]
+    "runways": [
+      "11/29"
+    ],
+    "runway_headings": [
+      105.9,
+      285.9
+    ],
+    "opening_hours": "SUM 0700-SS/1900, O/T PPR; WIN 0800-SS, O/T PPR",
+    "opening_hours_source": "AIP VFR AD 2-99, 25 JUN 2026",
+    "website": "https://www.flugplatz-stadtlohn.de/index.php?id=79"
   },
   {
     "identifier": "EDLT",
     "name": "Münster-Telgte",
     "latitude": 51.94451,
     "longitude": 7.77364,
-    "runways": ["10/28"],
-    "runway_headings": [94.0, 274.0]
+    "runways": [
+      "10/28"
+    ],
+    "runway_headings": [
+      94.0,
+      274.0
+    ],
+    "opening_hours": "SUM 0700-1800/ECET; WIN 0800-1800/ECET, O/T PPR, attended/unattended",
+    "opening_hours_source": "AIP VFR AD 2-72, 25 JUN 2026",
+    "website": "https://flugplatz-muenster-telgte.de/"
   },
   {
     "identifier": "EDLB",
     "name": "Borkenberge",
     "latitude": 51.7798,
     "longitude": 7.28936,
-    "runways": ["07/25"],
-    "runway_headings": [76.0, 256.0]
+    "runways": [
+      "07/25"
+    ],
+    "runway_headings": [
+      76.0,
+      256.0
+    ],
+    "opening_hours": "SUM Mon-Fri 0800-1800, Sat, Sun+HOL 0700-1800; WIN 0900-ECET/1900, O/T PPR",
+    "opening_hours_source": "AIP VFR AD 2-18, 25 JUN 2026",
+    "website": "https://borkenberge.com/flugplatz-info/"
   },
   {
     "identifier": "EDLH",
     "name": "Hamm-Lippewiesen",
     "latitude": 51.69071,
     "longitude": 7.81911,
-    "runways": ["06/24"],
-    "runway_headings": [59.4, 239.4]
+    "runways": [
+      "06/24"
+    ],
+    "runway_headings": [
+      59.4,
+      239.4
+    ],
+    "opening_hours": "PPR 0500 (0400)-2100 (2000), only daylight and VMC, attended or unattended",
+    "opening_hours_source": "AIP VFR AD 2-43, 23 JUL 2026",
+    "website": "https://www.flugplatz-hamm.de/"
   }
 ]

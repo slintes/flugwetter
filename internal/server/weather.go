@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -315,6 +316,104 @@ func resolveDaylight(ctx context.Context, airport Airport, times []string) map[s
 	return daylight
 }
 
+// forecastWindow returns the span the forecast covers: the start of its first hour to the
+// *end* of its last.
+//
+// The trailing hour is what the extra hour is for. Each timestamp names an hour, so a
+// forecast whose last entry is 23:00 covers up to 24:00 -- stopping the window at 23:00
+// left that final hour unshaded on a night that plainly was one.
+//
+// Unparseable timestamps are skipped rather than defaulting to the zero time, which would
+// stretch the window back to the year 1 and shade the entire chart.
+func forecastWindow(times []string) (from, to time.Time) {
+	for _, timeStr := range times {
+		t, err := hourTime(timeStr)
+		if err != nil {
+			continue
+		}
+		if from.IsZero() || t.Before(from) {
+			from = t
+		}
+		if end := t.Add(time.Hour); end.After(to) {
+			to = end
+		}
+	}
+	return from, to
+}
+
+// nightIntervals turns the per-date daylight windows into the stretches of night the charts
+// shade grey.
+//
+// The boundary is civil twilight, which is the same one calculateVFRProbability scores a
+// hard zero against -- so the band and the score cannot disagree about what night is. They
+// are intervals rather than per-hour flags so the edges land on dusk rather than snapping
+// to the hour.
+//
+// A date whose daylight lookup failed is absent from the map, and the night either side of
+// it is left undrawn: bridging the gap would mean claiming a dawn time nobody knows. An
+// unshaded night reads as "no data", a wrongly shaded day reads as a fact.
+func nightIntervals(daylight map[string]*SunriseSunsetResponse, from, to time.Time) []Interval {
+	if len(daylight) == 0 || !to.After(from) {
+		return nil
+	}
+
+	dates := make([]string, 0, len(daylight))
+	for date := range daylight {
+		dates = append(dates, date)
+	}
+	// ISO dates sort correctly as strings.
+	sort.Strings(dates)
+
+	var out []Interval
+	add := func(start, end time.Time) {
+		if start.Before(from) {
+			start = from
+		}
+		if end.After(to) {
+			end = to
+		}
+		if end.After(start) {
+			out = append(out, Interval{From: start, To: end})
+		}
+	}
+
+	// The forecast usually opens in the middle of a night, before the first dawn it knows
+	// about. Without this the first hours would be unshaded however dark they are.
+	if first := daylight[dates[0]]; first != nil {
+		add(from, first.Parsed.CivilTwilightBegin)
+	}
+
+	for i, date := range dates {
+		window := daylight[date]
+		if window == nil {
+			continue
+		}
+
+		if i+1 < len(dates) {
+			next := daylight[dates[i+1]]
+			if next != nil && isNextDay(date, dates[i+1]) {
+				add(window.Parsed.CivilTwilightEnd, next.Parsed.CivilTwilightBegin)
+			}
+			// A gap in the dates contributes nothing: see the note above.
+			continue
+		}
+
+		// The last date the forecast reaches into, whose night runs off the end of it.
+		add(window.Parsed.CivilTwilightEnd, to)
+	}
+
+	return out
+}
+
+// isNextDay reports whether b is the calendar day after a, both "2006-01-02".
+func isNextDay(a, b string) bool {
+	parsed, err := time.Parse("2006-01-02", a)
+	if err != nil {
+		return false
+	}
+	return parsed.AddDate(0, 0, 1).Format("2006-01-02") == b
+}
+
 // processWeatherData converts API response to frontend-friendly format
 func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, airport Airport) *ProcessedWeatherData {
 	// The runs are stamped here rather than at serve time because they describe *this*
@@ -333,6 +432,8 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 
 	// One lookup per date, before the loop, rather than two per hour inside it.
 	daylight := resolveDaylight(ctx, airport, apiResponse.Hourly.Time)
+	from, to := forecastWindow(apiResponse.Hourly.Time)
+	processed.NightPeriods = nightIntervals(daylight, from, to)
 
 	// Process temperature and cloud data
 	for i, timeStr := range apiResponse.Hourly.Time {

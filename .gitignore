@@ -1,2 +1,9 @@
 # Go build output (see `go build -o flugwetter .` in CLAUDE.md)
 /flugwetter
+
+# The project skills are part of the repository. The global ~/.gitignore excludes .claude
+# everywhere, and a repository's own .gitignore takes precedence over it -- so this
+# re-includes the directory here without touching that rule for any other project. The
+# directory has to be un-ignored before anything inside it can be.
+!.claude/
+!.claude/**

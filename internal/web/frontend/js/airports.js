@@ -151,6 +151,51 @@ function updateAirportHeading() {
     document.title = airport
         ? `Flugwetter ${airport.identifier} — ${airport.name}`
         : 'Flugwetter - Aviation Weather Forecast';
+    updateOpeningHours(airport);
+}
+
+// The airfield's published operating times, as the AIP prints them.
+//
+// Each of the three fields is optional and rendered only if present, so a partially filled
+// entry still looks deliberate rather than showing an empty separator. The source carries a
+// date because the AIP moves on a 28-day cycle and this JSON does not; the link is how a
+// reader finds out the printed line has drifted.
+function updateOpeningHours(airport) {
+    const element = document.getElementById('openingHours');
+    element.replaceChildren();
+
+    const parts = [];
+    if (airport && airport.opening_hours) {
+        parts.push(document.createTextNode(airport.opening_hours));
+    }
+    if (airport && airport.opening_hours_source) {
+        const source = document.createElement('span');
+        source.className = 'opening-hours-source';
+        source.textContent = airport.opening_hours_source;
+        parts.push(source);
+    }
+    if (airport && airport.website) {
+        const link = document.createElement('a');
+        link.href = airport.website;
+        link.target = '_blank';
+        // noopener because target=_blank otherwise hands the new page a handle on this
+        // one; noreferrer keeps the airfield's logs free of our URL.
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'airfield site';
+        parts.push(link);
+    }
+
+    parts.forEach((part, i) => {
+        if (i > 0) {
+            const separator = document.createElement('span');
+            separator.className = 'opening-hours-separator';
+            separator.textContent = '·';
+            element.appendChild(separator);
+        }
+        element.appendChild(part);
+    });
+
+    element.hidden = parts.length === 0;
 }
 
 // ---------------------------------------------------------------------------
