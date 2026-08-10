@@ -108,8 +108,16 @@
             </div>
             <div id="airportMap"></div>
             <p class="map-modal-hint">
-                Click a marker to load its forecast.
+                Click a marker to load its forecast. Red areas have activity in the published
+                airspace use plan — click one for its times.
                 <span id="mapOverlayNote"></span>
+            </p>
+            <!-- DFS publishes the plan with this caveat, and it belongs next to the red
+                 shapes rather than in a commit message: the plan is not a complete picture
+                 of restricted airspace, and is not the legally authoritative one. -->
+            <p class="map-modal-disclaimer">
+                The airspace use plan covers activations below FL100 only and may be
+                incomplete. AIP ENR 5.1 and NOTAM remain authoritative.
             </p>
         </div>
     </div>

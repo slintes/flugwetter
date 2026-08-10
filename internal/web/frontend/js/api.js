@@ -6,6 +6,7 @@ import { getCurrentAirportId, isHomeAirport } from './airports.js';
 import { toEpochMs } from './time.js';
 import { shouldReload, latestModelRun, formatModelRun } from './status.js';
 import { setBands } from './bands.js';
+import { loadRestrictions, windowsFor, HOME_AREA } from './restrictions.js';
 
 // When the data on screen was last replaced.
 let lastLoadedAt = Date.now();
@@ -62,7 +63,9 @@ export async function loadWeatherData() {
         const url = airport
             ? `/api/weather?airport=${encodeURIComponent(airport)}`
             : '/api/weather';
-        const response = await fetch(url);
+        // Both in flight at once: the airspace plan is small and independent, and its
+        // failure is handled inside loadRestrictions rather than failing the load.
+        const [response] = await Promise.all([fetch(url), loadRestrictions()]);
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -154,7 +157,13 @@ export function updateCharts(data) {
     // are absent when the daylight lookup degrades, and the daytime band should not vanish
     // with them.
     const span = forecastSpan(data.temperature_data);
-    setBands(data.night_periods, span.from, span.to, { daytime: isHomeAirport() });
+    const home = isHomeAirport();
+    setBands(data.night_periods, span.from, span.to, {
+        daytime: home,
+        // The ED-R band describes the airspace over one field. Elsewhere it would be a red
+        // stripe about somewhere the reader is not.
+        restricted: home ? windowsFor(HOME_AREA) : [],
+    });
     lastLoadedAt = Date.now();
 
     // Guarded like wind_data and vfr_data below. Unguarded, a payload missing this one

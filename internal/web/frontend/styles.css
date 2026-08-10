@@ -168,6 +168,24 @@ header h1 {
     color: #636e72;
 }
 
+/* Quieter than the hint above it, but present: this is the caveat DFS attaches to the
+   plan, and it has to be readable rather than decorative. */
+.map-modal-disclaimer {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0 15px 10px;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: #8a95a1;
+}
+
+/* The window list inside a restricted-area popup. */
+.edr-windows {
+    margin: 4px 0 0;
+    padding-left: 18px;
+    font-variant-numeric: tabular-nums;
+}
+
 .airport-tooltip {
     /* 0.9 rather than fully opaque: Leaflet puts tooltips on their own GPU layer with
        translate3d, and a translucent background there drops the text from subpixel to

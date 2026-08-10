@@ -12,6 +12,7 @@
 // reason the `charts` registry is one: the plugin holds the reference from the start.
 export const bands = {
     night: [],
+    restricted: [],
     day: [],
 };
 
@@ -34,9 +35,16 @@ export const DAY_END_HOUR = 20;
 // overlapping them would blend into a third colour exactly where a reader most wants to
 // know which one applies -- a winter afternoon. Disjoint bands also make the draw order
 // irrelevant.
-export function setBands(nightIntervals, from, to, { daytime = true } = {}) {
+// Precedence is night > restricted > day, applied by subtraction rather than by draw order.
+// Three translucent fills overlapping would produce blended colours that mean nothing, and
+// the one place they all meet -- an evening activation in winter -- is exactly where a
+// reader needs an unambiguous answer.
+export function setBands(nightIntervals, from, to, { daytime = true, restricted = [] } = {}) {
     bands.night = toEpochIntervals(nightIntervals);
-    bands.day = daytime ? subtractIntervals(dayBands(from, to), bands.night) : [];
+    bands.restricted = subtractIntervals(toEpochIntervals(restricted), bands.night);
+
+    const covered = bands.night.concat(bands.restricted);
+    bands.day = daytime ? subtractIntervals(dayBands(from, to), covered) : [];
 }
 
 // dayBands returns one DAY_START_HOUR..DAY_END_HOUR interval per local day that intersects
@@ -151,3 +159,4 @@ export function visibleBands(intervals, min, max) {
 // they have to stay light. Wind barbs, cloud symbols and the gridlines all draw on top.
 export const NIGHT_FILL = 'rgba(100, 116, 139, 0.10)';
 export const DAY_FILL = 'rgba(34, 197, 94, 0.12)';
+export const RESTRICTED_FILL = 'rgba(239, 68, 68, 0.12)';

@@ -44,6 +44,36 @@ type Interval struct {
 	To   time.Time `json:"to"`
 }
 
+// RestrictedArea is one ED-R or ED-D with activity planned in the window that was queried.
+// Areas with no planned activity are absent, so presence means "has known active times".
+type RestrictedArea struct {
+	Name    string              `json:"name"` // "ED-R37A"
+	Windows []RestrictionWindow `json:"windows"`
+	// Polygon is the boundary as [latitude, longitude] pairs, for the map. Absent when the
+	// plan gave no geometry, which the map treats as "nothing to draw" rather than an error.
+	Polygon [][2]float64 `json:"polygon,omitempty"`
+}
+
+// RestrictionWindow is one activation. Lower and Upper are the plan's own notation --
+// "GND", "A050", "F100" — passed through rather than converted, for the same reason the
+// airfield opening hours are.
+type RestrictionWindow struct {
+	From  time.Time `json:"from"`
+	To    time.Time `json:"to"`
+	Lower string    `json:"lower,omitempty"`
+	Upper string    `json:"upper,omitempty"`
+}
+
+// RestrictionsResponse is what /api/restrictions serves.
+type RestrictionsResponse struct {
+	Areas     []RestrictedArea `json:"areas"`
+	FetchedAt time.Time        `json:"fetched_at"`
+	// Degraded reports that the plan could not be fetched for two consecutive polls, so
+	// what is shown is the last known set. Surfaced rather than logged: an airspace plan
+	// silently frozen is worse than one visibly old.
+	Degraded bool `json:"degraded"`
+}
+
 // weatherBrowserCache is how long a browser may reuse a forecast payload without asking.
 // Model runs are hours apart, so this only ever collapses an accidental double-fetch.
 const weatherBrowserCache = time.Minute
@@ -204,6 +234,12 @@ func Run() error {
 	modelRuns.poll(ctx)
 	go watchModelRuns(ctx)
 
+	// The airspace plan, on its own six-hour cadence. Polled once here so the first page
+	// load has it, then left to its ticker -- nothing downstream needs invalidating, so it
+	// simply replaces what it holds.
+	restrictions.poll(ctx)
+	go watchRestrictions(ctx)
+
 	// pre cache weather data for the default airport only. Warming all of them would fire
 	// one very large Open-Meteo request per airfield before the first user arrives.
 	_, _ = GetWeatherData(ctx, defaultAirport)
@@ -219,6 +255,7 @@ func Run() error {
 	mux.HandleFunc("GET /api/config", getConfig)
 	mux.HandleFunc("GET /api/weather", getWeatherData)
 	mux.HandleFunc("GET /api/status", getStatus)
+	mux.HandleFunc("GET /api/restrictions", getRestrictions)
 	if openAIPEnabled() {
 		mux.HandleFunc(tileRoute, serveOpenAIPTile)
 		slog.Info("openAIP overlay enabled")
@@ -328,6 +365,24 @@ func getStatus(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewEncoder(w).Encode(status); err != nil {
 		slog.Error("failed to encode status", "error", err)
+	}
+}
+
+func getRestrictions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	// The plan is refetched every six hours, so a browser holding it for a few minutes
+	// costs nothing and saves re-sending the polygons, which are most of the payload.
+	w.Header().Set("Cache-Control", "private, max-age=300")
+
+	areas, fetchedAt, degraded := restrictions.snapshot()
+	if areas == nil {
+		// Encode an empty array rather than null: the frontend iterates it.
+		areas = []RestrictedArea{}
+	}
+
+	response := RestrictionsResponse{Areas: areas, FetchedAt: fetchedAt, Degraded: degraded}
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		slog.Error("failed to encode restrictions", "error", err)
 	}
 }
 

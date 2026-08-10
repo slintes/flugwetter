@@ -5,6 +5,7 @@
 // the two modules mutually dependent; main.js passes the reload in instead.
 
 import { applyDensity, isLowDensity, isWideViewport } from './viewport.js';
+import { restrictedAreas } from './restrictions.js';
 
 // Airport selection state, filled from /api/config on startup.
 let appConfig = { airports: [], default_airport: '', openaip_overlay: false };
@@ -222,6 +223,51 @@ let airportMarkers = {};
 // north-west Germany.
 const MAP_FALLBACK_VIEW = { center: [52.7, 7.5], zoom: 7 };
 
+// Restricted airspace with activity in the published plan.
+//
+// Every area in the payload has at least one window -- the backend drops the rest -- so a
+// red shape means "has known active times", and the popup says when. Areas with no plan
+// published are simply absent, which the short horizon makes unavoidable.
+function drawRestrictedAreas() {
+    const areas = restrictedAreas();
+    if (areas.length === 0) {
+        return;
+    }
+
+    areas.forEach(area => {
+        if (!Array.isArray(area.polygon) || area.polygon.length < 3) {
+            return;
+        }
+
+        L.polygon(area.polygon, {
+            color: '#ef4444',
+            weight: 1,
+            fillColor: '#ef4444',
+            fillOpacity: 0.12,
+            // Areas overlap each other and sit under the airfield markers; without this a
+            // shape swallows clicks meant for the marker inside it.
+            interactive: true,
+        })
+            .addTo(airportMap)
+            .bindPopup(restrictedAreaPopup(area));
+    });
+}
+
+function restrictedAreaPopup(area) {
+    const rows = area.windows.map(window => {
+        const from = new Date(window.from);
+        const to = new Date(window.to);
+        const day = from.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+        const hhmm = t => `${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}`;
+        const limits = [window.lower, window.upper].filter(Boolean).join('–');
+        return `<li>${day} ${hhmm(from)}–${hhmm(to)}Z${limits ? ` · ${limits}` : ''}</li>`;
+    }).join('');
+
+    // UTC, because that is how the plan publishes them and how they are discussed on the
+    // radio -- the same reasoning as the model run label.
+    return `<strong>${area.name}</strong><ul class="edr-windows">${rows}</ul>`;
+}
+
 function openAirportMap() {
     const modal = document.getElementById('airportMapModal');
     modal.hidden = false;
@@ -294,6 +340,10 @@ function initAirportMap() {
     } else {
         note.textContent = 'openAIP overlay unavailable — set OPENAIP_API_KEY on the server to show airspaces.';
     }
+
+    // Before the airfields, so a marker is never buried under an area it sits inside --
+    // EDWN is inside two of them.
+    drawRestrictedAreas();
 
     appConfig.airports.forEach(airport => {
         const marker = L.circleMarker([airport.latitude, airport.longitude], markerStyle(false))

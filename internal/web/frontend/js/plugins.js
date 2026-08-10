@@ -10,7 +10,7 @@
 import { weatherCodeToIcon } from './weather-icons.js';
 import { barbComponents, isCalm } from './barbs.js';
 import { axisWidths, isNarrowViewport, vfrMetrics, tooltipFont } from './viewport.js';
-import { bands, visibleBands, NIGHT_FILL, DAY_FILL } from './bands.js';
+import { bands, visibleBands, NIGHT_FILL, DAY_FILL, RESTRICTED_FILL } from './bands.js';
 
 // Cache for weather icons
 const weatherIconCache = {};
@@ -110,8 +110,9 @@ Chart.register({
         }
 
         const day = visibleBands(bands.day, scale.min, scale.max);
+        const restricted = visibleBands(bands.restricted, scale.min, scale.max);
         const night = visibleBands(bands.night, scale.min, scale.max);
-        if (day.length === 0 && night.length === 0) {
+        if (day.length === 0 && restricted.length === 0 && night.length === 0) {
             return;
         }
 
@@ -132,9 +133,11 @@ Chart.register({
             }
         };
 
-        // Night last. The two lists are disjoint -- setBands subtracts one from the other --
-        // so this is redundant, and it is here to state which one wins if that ever changes.
+        // Weakest claim first, strongest last. The three lists are disjoint -- setBands
+        // subtracts them from each other -- so the order is redundant, and it is here to
+        // state the precedence if that ever changes.
         paint(day, DAY_FILL);
+        paint(restricted, RESTRICTED_FILL);
         paint(night, NIGHT_FILL);
         ctx.restore();
     }

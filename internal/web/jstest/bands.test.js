@@ -189,3 +189,62 @@ test('the day band survives a payload with no night periods', () => {
     assert.deepEqual(bands.night, []);
     assert.ok(bands.day.length > 0, 'the daytime band must not vanish with the night data');
 });
+
+// Night > restricted > day. An activation running past sunset is the case that decides it:
+// the part after dark belongs to night, and only the daylight part stays red.
+test('the restricted band is clipped by night', () => {
+    setBands(
+        [{ from: '2026-08-11T19:45:00Z', to: '2026-08-12T03:30:00Z' }],
+        T('2026-08-11T00:00:00Z'), T('2026-08-12T12:00:00Z'),
+        { restricted: [{ from: '2026-08-11T17:00:00Z', to: '2026-08-11T22:00:00Z' }] });
+
+    assert.equal(bands.restricted.length, 1);
+    assert.equal(new Date(bands.restricted[0].to).toISOString(), '2026-08-11T19:45:00.000Z');
+});
+
+// The real EDWN case: an activation in the middle of the day leaves green either side of it
+// rather than a blended band across it.
+test('a midday activation splits the day band in two', () => {
+    setBands([], T('2026-08-11T00:00:00Z'), T('2026-08-12T00:00:00Z'),
+        { restricted: [{ from: '2026-08-11T11:00:00Z', to: '2026-08-11T13:00:00Z' }] });
+
+    assert.equal(bands.day.length, 2, 'the green band must be interrupted, not overpainted');
+    assert.equal(new Date(bands.day[0].to).toISOString(), '2026-08-11T11:00:00.000Z');
+    assert.equal(new Date(bands.day[1].from).toISOString(), '2026-08-11T13:00:00.000Z');
+});
+
+// Three translucent fills overlapping would produce blended colours that mean nothing, in
+// exactly the place a reader needs an unambiguous answer.
+test('no two bands ever overlap', () => {
+    setBands(
+        [{ from: '2026-08-10T19:47:00Z', to: '2026-08-11T03:27:00Z' },
+         { from: '2026-08-11T19:45:00Z', to: '2026-08-12T03:30:00Z' }],
+        T('2026-08-10T00:00:00Z'), T('2026-08-12T12:00:00Z'),
+        { restricted: [{ from: '2026-08-11T07:00:00Z', to: '2026-08-11T15:00:00Z' },
+                       { from: '2026-08-11T18:00:00Z', to: '2026-08-12T06:00:00Z' }] });
+
+    const all = [
+        ...bands.night.map(b => ({ ...b, kind: 'night' })),
+        ...bands.restricted.map(b => ({ ...b, kind: 'restricted' })),
+        ...bands.day.map(b => ({ ...b, kind: 'day' })),
+    ];
+    assert.ok(bands.restricted.length > 0 && bands.day.length > 0, 'expected all three kinds');
+
+    for (const a of all) {
+        for (const b of all) {
+            if (a === b) continue;
+            assert.ok(a.to <= b.from || a.from >= b.to,
+                `${a.kind} ${JSON.stringify(a)} overlaps ${b.kind} ${JSON.stringify(b)}`);
+        }
+    }
+});
+
+// Away from home there is no red either: ED-R 37A surrounds EDWN and says nothing about
+// anywhere else. The caller passes an empty list, and an unset option must mean the same.
+test('the restricted band defaults to empty', () => {
+    setBands([], T('2026-08-11T00:00:00Z'), T('2026-08-12T00:00:00Z'));
+    assert.deepEqual(bands.restricted, []);
+
+    setBands([], T('2026-08-11T00:00:00Z'), T('2026-08-12T00:00:00Z'), { restricted: [] });
+    assert.deepEqual(bands.restricted, []);
+});

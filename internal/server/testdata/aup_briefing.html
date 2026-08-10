@@ -1,0 +1,30 @@
+<!--
+    A trimmed AUP briefing, in the shape ais.dfs.de really answers with: one <table
+    class="airspace"> per area per FIR, the name and the geometry in data- attributes, and
+    ISO-8601 timestamps in <time datetime>.
+
+    Kept small but not tidied: the repeat of ED-R37A under a second FIR, the area with no
+    windows and the unparseable timestamp are all things the live endpoint does, and each
+    one is a case the parser has to survive. The polygons are cut to a few points; the real
+    ones run to hundreds.
+-->
+<div class="briefing">
+
+<table class="airspace" data-part="ED-R37A" data-polygon="522607N0072010E-522600N0072010E-522552N0072010E-522545N0072010E"><thead><tr><th class="name">ED-R37A</th></tr></thead><tbody><tr class="validity"><td>From <time datetime="2026-08-11T07:00Z">11 Aug 2026 07:00</time> until <time datetime="2026-08-11T15:00Z">11 Aug 2026 15:00</time> at Lower Limit GND to Upper Limit A050</td></tr></tbody></table>
+
+<!-- The same area again, from the neighbouring FIR: one window it already has, one it does not. -->
+<table class="airspace" data-part="ED-R37A" data-polygon="522607N0072010E-522600N0072010E-522552N0072010E-522545N0072010E"><thead><tr><th class="name">ED-R37A</th></tr></thead><tbody><tr class="validity"><td>From <time datetime="2026-08-11T07:00Z">11 Aug 2026 07:00</time> until <time datetime="2026-08-11T15:00Z">11 Aug 2026 15:00</time> at Lower Limit GND to Upper Limit A050</td></tr><tr class="validity"><td>From <time datetime="2026-08-12T06:00Z">12 Aug 2026 06:00</time> until <time datetime="2026-08-12T14:00Z">12 Aug 2026 14:00</time> at Lower Limit A010 to Upper Limit F100</td></tr></tbody></table>
+
+<!-- Several activations in one table, and a southern/western point to exercise the signs. -->
+<table class="airspace" data-part="ED-R112A" data-polygon="522607S0072010W-100000N1792010E"><thead><tr><th class="name">ED-R112A</th></tr></thead><tbody><tr class="validity"><td>From <time datetime="2026-08-11T06:00Z">11 Aug 2026 06:00</time> until <time datetime="2026-08-11T22:00Z">11 Aug 2026 22:00</time> at Lower Limit GND to Upper Limit A010</td></tr><tr class="validity"><td>From <time datetime="2026-08-12T06:00Z">12 Aug 2026 06:00</time> until <time datetime="2026-08-12T22:00Z">12 Aug 2026 22:00</time> at Lower Limit GND to Upper Limit A010</td></tr><tr class="validity"><td>From <time datetime="2026-08-13T06:00Z">13 Aug 2026 06:00</time> until <time datetime="2026-08-13T13:00Z">13 Aug 2026 13:00</time> at Lower Limit GND to Upper Limit A010</td></tr></tbody></table>
+
+<!-- One unreadable timestamp. The other window of this area still counts. -->
+<table class="airspace" data-part="ED-R204" data-polygon="533000N0083000E-533000N0084000E"><thead><tr><th class="name">ED-R204</th></tr></thead><tbody><tr class="validity"><td>From <time datetime="not a timestamp">whenever</time> until <time datetime="2026-08-11T15:00Z">11 Aug 2026 15:00</time> at Lower Limit GND to Upper Limit A050</td></tr><tr class="validity"><td>From <time datetime="2026-08-14T08:00Z">14 Aug 2026 08:00</time> until <time datetime="2026-08-14T10:00Z">14 Aug 2026 10:00</time> at Lower Limit GND to Upper Limit A030</td></tr></tbody></table>
+
+<!-- Listed with no activity at all: it must not reach the payload as an area with no windows. -->
+<table class="airspace" data-part="ED-R305" data-polygon="540000N0090000E-540000N0091000E"><thead><tr><th class="name">ED-R305</th></tr></thead><tbody></tbody></table>
+
+<!-- Not an airspace table. The page is full of these. -->
+<table class="legend"><tbody><tr class="validity"><td>From <time datetime="2026-08-11T07:00Z">x</time> until <time datetime="2026-08-11T09:00Z">y</time></td></tr></tbody></table>
+
+</div>
