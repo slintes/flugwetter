@@ -19,6 +19,19 @@ export function getCurrentAirportId() {
     return currentAirportId;
 }
 
+// isHomeAirport reports whether the pinned airfield is the one on screen.
+//
+// The bands that describe a personal flying window -- the green daytime one, and the red
+// ED-R activity -- are about this field and nobody else's. Drawing them over Wangerooge
+// would assert something about Wangerooge that was never meant.
+//
+// Keyed on the pinned entry rather than on the string "EDWN", so the identifier stays in
+// airports.json alone. Pinning a different field moves those bands with it, which is the
+// intended reading of "home".
+export function isHomeAirport() {
+    return Boolean(currentAirportId) && currentAirportId === appConfig.default_airport;
+}
+
 export function getAppConfig() {
     return appConfig;
 }

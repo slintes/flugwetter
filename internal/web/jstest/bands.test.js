@@ -158,6 +158,29 @@ test('the day and night bands never overlap', () => {
     }
 });
 
+// The green window describes a personal flying habit at the home field, not a property of
+// the airspace, so it must not appear over any other airfield's charts. Night is about the
+// sun and stays either way.
+test('the daytime band is suppressed away from the home airfield', () => {
+    const night = [{ from: '2026-08-09T19:49:00Z', to: '2026-08-10T03:26:00Z' }];
+    const from = T('2026-08-09T00:00:00Z');
+    const to = T('2026-08-10T12:00:00Z');
+
+    setBands(night, from, to, { daytime: false });
+    assert.deepEqual(bands.day, [], 'no green away from home');
+    assert.equal(bands.night.length, 1, 'night is unaffected');
+
+    setBands(night, from, to, { daytime: true });
+    assert.ok(bands.day.length > 0, 'green returns at home');
+});
+
+// Omitting the flag keeps the band, so a caller that has not been updated does not silently
+// lose it.
+test('the daytime band defaults to on', () => {
+    setBands([], T('2026-08-09T00:00:00Z'), T('2026-08-10T00:00:00Z'));
+    assert.ok(bands.day.length > 0);
+});
+
 // A degraded daylight lookup sends no night periods. The daytime band is computed from the
 // span, not from them, so it must survive that.
 test('the day band survives a payload with no night periods', () => {

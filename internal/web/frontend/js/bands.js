@@ -25,13 +25,18 @@ export const DAY_END_HOUR = 20;
 // rather than parsing dates inside a draw hook that runs on every frame of a pan, and
 // derives the daytime band over the same span.
 //
+// `daytime` is false for every airfield but the home one: the green window describes a
+// personal flying habit, not a property of the airspace, so it has no business over another
+// field's charts. The caller decides -- this module knows nothing about which airfield is
+// selected, which is what keeps it testable outside a browser.
+//
 // Night is subtracted from day rather than drawn over it. Both fills are translucent, so
 // overlapping them would blend into a third colour exactly where a reader most wants to
 // know which one applies -- a winter afternoon. Disjoint bands also make the draw order
 // irrelevant.
-export function setBands(nightIntervals, from, to) {
+export function setBands(nightIntervals, from, to, { daytime = true } = {}) {
     bands.night = toEpochIntervals(nightIntervals);
-    bands.day = subtractIntervals(dayBands(from, to), bands.night);
+    bands.day = daytime ? subtractIntervals(dayBands(from, to), bands.night) : [];
 }
 
 // dayBands returns one DAY_START_HOUR..DAY_END_HOUR interval per local day that intersects

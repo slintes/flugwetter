@@ -2,7 +2,7 @@
 
 import { charts } from './charts.js';
 import { applyInitialZoomOnce } from './panzoom.js';
-import { getCurrentAirportId } from './airports.js';
+import { getCurrentAirportId, isHomeAirport } from './airports.js';
 import { toEpochMs } from './time.js';
 import { shouldReload, latestModelRun, formatModelRun } from './status.js';
 import { setBands } from './bands.js';
@@ -154,7 +154,7 @@ export function updateCharts(data) {
     // are absent when the daylight lookup degrades, and the daytime band should not vanish
     // with them.
     const span = forecastSpan(data.temperature_data);
-    setBands(data.night_periods, span.from, span.to);
+    setBands(data.night_periods, span.from, span.to, { daytime: isHomeAirport() });
     lastLoadedAt = Date.now();
 
     // Guarded like wind_data and vfr_data below. Unguarded, a payload missing this one
