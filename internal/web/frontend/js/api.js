@@ -5,7 +5,7 @@ import { applyInitialZoomOnce } from './panzoom.js';
 import { getCurrentAirportId } from './airports.js';
 import { toEpochMs } from './time.js';
 import { shouldReload, latestModelRun, formatModelRun } from './status.js';
-import { setNightBands } from './bands.js';
+import { setBands } from './bands.js';
 
 // When the data on screen was last replaced.
 let lastLoadedAt = Date.now();
@@ -110,6 +110,29 @@ function updateStaleBanner(data) {
     element.style.display = 'block';
 }
 
+// forecastSpan returns the range the charts cover, from the first hour to the end of the
+// last -- each timestamp names an hour, so a series ending at 23:00 covers up to 24:00, and
+// stopping at 23:00 would leave that hour unshaded. The backend's forecastWindow does the
+// same for the night periods.
+function forecastSpan(points) {
+    if (!Array.isArray(points) || points.length === 0) {
+        return { from: NaN, to: NaN };
+    }
+
+    const HOUR_MS = 60 * 60 * 1000;
+    let from = Infinity;
+    let to = -Infinity;
+    for (const point of points) {
+        const ts = toEpochMs(point.time);
+        if (!Number.isFinite(ts)) {
+            continue;
+        }
+        from = Math.min(from, ts);
+        to = Math.max(to, ts + HOUR_MS);
+    }
+    return Number.isFinite(from) ? { from, to } : { from: NaN, to: NaN };
+}
+
 // The forecast's own age, which generated_at is not: that one says when we fetched our
 // copy, this says when the weather model behind it last ran.
 function updateModelRunLabel(data) {
@@ -126,7 +149,12 @@ export function updateCharts(data) {
     updateModelRunLabel(data);
     // Before the charts update, so the first frame after a load already has them: the
     // plugin reads this at draw time and would otherwise paint one frame without shading.
-    setNightBands(data.night_periods);
+    //
+    // The span comes from the temperature series rather than from the night periods: those
+    // are absent when the daylight lookup degrades, and the daytime band should not vanish
+    // with them.
+    const span = forecastSpan(data.temperature_data);
+    setBands(data.night_periods, span.from, span.to);
     lastLoadedAt = Date.now();
 
     // Guarded like wind_data and vfr_data below. Unguarded, a payload missing this one

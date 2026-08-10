@@ -12,12 +12,94 @@
 // reason the `charts` registry is one: the plugin holds the reference from the start.
 export const bands = {
     night: [],
+    day: [],
 };
 
-// setNightBands converts the payload's intervals to epoch milliseconds once, at load,
-// rather than parsing dates inside a draw hook that runs on every frame of a pan.
-export function setNightBands(intervals) {
-    bands.night = toEpochIntervals(intervals);
+// The daytime window, in local hours. A fixed pair of numbers, the same for every airfield,
+// and deliberately *not* anyone's opening hours -- those carry sunset caps, lunch breaks and
+// PPR, which is why they are text under the picker rather than a rectangle here.
+export const DAY_START_HOUR = 10;
+export const DAY_END_HOUR = 20;
+
+// setBands converts the payload's night intervals to epoch milliseconds once, at load,
+// rather than parsing dates inside a draw hook that runs on every frame of a pan, and
+// derives the daytime band over the same span.
+//
+// Night is subtracted from day rather than drawn over it. Both fills are translucent, so
+// overlapping them would blend into a third colour exactly where a reader most wants to
+// know which one applies -- a winter afternoon. Disjoint bands also make the draw order
+// irrelevant.
+export function setBands(nightIntervals, from, to) {
+    bands.night = toEpochIntervals(nightIntervals);
+    bands.day = subtractIntervals(dayBands(from, to), bands.night);
+}
+
+// dayBands returns one DAY_START_HOUR..DAY_END_HOUR interval per local day that intersects
+// [from, to], clipped to it.
+//
+// Built from local wall-clock components, which is what makes the daylight-saving shift fall
+// out rather than be computed: 10:00 local is 08:00Z in summer and 09:00Z in winter, and the
+// band lands under the axis label either way because the axis is local too.
+export function dayBands(from, to) {
+    if (!Number.isFinite(from) || !Number.isFinite(to) || !(to > from)) {
+        return [];
+    }
+
+    const out = [];
+    // Start from local midnight of the first day, so the first window is not missed when the
+    // span opens after 10:00.
+    const cursor = new Date(from);
+    cursor.setHours(0, 0, 0, 0);
+
+    for (; cursor.getTime() <= to; cursor.setDate(cursor.getDate() + 1)) {
+        const y = cursor.getFullYear();
+        const m = cursor.getMonth();
+        const d = cursor.getDate();
+
+        const start = Math.max(new Date(y, m, d, DAY_START_HOUR).getTime(), from);
+        const end = Math.min(new Date(y, m, d, DAY_END_HOUR).getTime(), to);
+        if (end > start) {
+            out.push({ from: start, to: end });
+        }
+    }
+    return out;
+}
+
+// subtractIntervals removes every hole from every base interval, splitting one in two where
+// a hole falls inside it.
+//
+// Both inputs are assumed sorted and non-overlapping among themselves, which is what the
+// backend sends and what dayBands produces.
+export function subtractIntervals(base, holes) {
+    if (!Array.isArray(base)) {
+        return [];
+    }
+    if (!Array.isArray(holes) || holes.length === 0) {
+        return base.slice();
+    }
+
+    const out = [];
+    for (const interval of base) {
+        let pieces = [{ from: interval.from, to: interval.to }];
+        for (const hole of holes) {
+            const next = [];
+            for (const piece of pieces) {
+                if (hole.to <= piece.from || hole.from >= piece.to) {
+                    next.push(piece);
+                    continue;
+                }
+                if (hole.from > piece.from) {
+                    next.push({ from: piece.from, to: hole.from });
+                }
+                if (hole.to < piece.to) {
+                    next.push({ from: hole.to, to: piece.to });
+                }
+            }
+            pieces = next;
+        }
+        out.push(...pieces);
+    }
+    return out;
 }
 
 // toEpochIntervals maps the wire format to {from, to} in epoch ms, dropping anything
@@ -60,6 +142,7 @@ export function visibleBands(intervals, min, max) {
     return clipped;
 }
 
-// Kept next to the bands themselves: this is the only place the shade is decided, and it
-// has to stay light. Wind barbs, cloud symbols and the gridlines all draw on top of it.
+// Kept next to the bands themselves: this is the only place the shades are decided, and
+// they have to stay light. Wind barbs, cloud symbols and the gridlines all draw on top.
 export const NIGHT_FILL = 'rgba(100, 116, 139, 0.10)';
+export const DAY_FILL = 'rgba(34, 197, 94, 0.12)';
