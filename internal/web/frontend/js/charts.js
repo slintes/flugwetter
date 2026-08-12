@@ -416,8 +416,38 @@ export function initializeCharts() {
                         label: function(context) {
                             const point = context.raw;
                             switch (context.dataset.label) {
-                                case 'Cloud Layers':
-                                    return `Height: ${point.y}ft, Coverage: ${point.coverage}%`;
+                                case 'Cloud Layers': {
+                                    // Every layer of that hour, not the one the pointer
+                                    // happened to be nearest to: which layer that was
+                                    // depended on the mouse height, and the rest of the
+                                    // sky went unreported. Returning an array from a
+                                    // Chart.js label callback puts each on its own line.
+                                    //
+                                    // Highest first, so the list reads down the chart the
+                                    // way the symbols are stacked on it.
+                                    const layers = context.dataset.data
+                                        .filter(layer => layer && layer.x === point.x)
+                                        .sort((a, b) => b.y - a.y);
+
+                                    // The axis stops at 12000ft, and the model reports
+                                    // cirrus far above it. Listing those in full would put
+                                    // rows in the tooltip for symbols that are not on the
+                                    // chart, so they collapse into one line carrying the
+                                    // only thing high cloud changes down here: whether
+                                    // there is a deck above.
+                                    const ceiling = context.chart.scales.y.max;
+                                    const above = layers.filter(layer => layer.y > ceiling);
+
+                                    const lines = layers
+                                        .filter(layer => layer.y <= ceiling)
+                                        .map(layer => `${layer.y}ft — ${layer.coverage}%`);
+
+                                    if (above.length > 0) {
+                                        const worst = Math.max(...above.map(layer => layer.coverage));
+                                        lines.unshift(`Above ${ceiling}ft — max ${worst}%`);
+                                    }
+                                    return lines;
+                                }
                                 case 'Visibility (km)':
                                     return `Visibility: ${point.y.toFixed(1)} km`;
                                 default:
