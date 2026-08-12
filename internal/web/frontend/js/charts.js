@@ -407,31 +407,24 @@ export function initializeCharts() {
                             // Display time in local timezone with date and time
                             return new Date(context[0].parsed.x).toLocaleString();
                         },
+                        // One row per dataset, each reporting its own series.
+                        //
+                        // Visibility used to be appended to the cloud row, which read fine
+                        // until an hour had no cloud at all: with no cloud point there was
+                        // no row to append it to, and the tooltip came up empty on exactly
+                        // the clear hours where visibility is the only thing left to check.
                         label: function(context) {
                             const point = context.raw;
-                            if (context.dataset.label === 'Cloud Layers') {
-                                // Find visibility data at the same time point
-                                let visibilityValue = "N/A";
-                                
-                                // Get the visibility dataset
-                                const visibilityDataset = context.chart.data.datasets.find(dataset => 
-                                    dataset.label === 'Visibility (km)'
-                                );
-                                
-                                if (visibilityDataset) {
-                                    // Find the visibility data point with the same x-value (time)
-                                    const visibilityPoint = visibilityDataset.data.find(dataPoint => 
-                                        dataPoint.x === point.x
-                                    );
-                                    
-                                    if (visibilityPoint && visibilityPoint.y !== undefined) {
-                                        visibilityValue = visibilityPoint.y.toFixed(1) + " km";
-                                    }
-                                }
-                                
-                                return `Height: ${point.y}ft, Coverage: ${point.coverage}%, Visibility: ${visibilityValue}`;
+                            switch (context.dataset.label) {
+                                case 'Cloud Layers':
+                                    return `Height: ${point.y}ft, Coverage: ${point.coverage}%`;
+                                case 'Visibility (km)':
+                                    return `Visibility: ${point.y.toFixed(1)} km`;
+                                default:
+                                    // Cloud base carries its own label on the chart, drawn
+                                    // and colour-coded by the cloudSymbols plugin.
+                                    return '';
                             }
-                            return '';
                         }
                     }
                 }
