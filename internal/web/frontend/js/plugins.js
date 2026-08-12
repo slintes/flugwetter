@@ -524,13 +524,19 @@ Chart.register({
     }
 });
 
-// The 30 degree mark on the temperature chart, red where the other two reference lines are
-// green: this one is a ceiling rather than a floor. It is where the temperature factor's
-// cost stops being nominal, and where density altitude starts to cost take-off performance.
-//
-// Unlike the cloud and wind axes, this one auto-scales, and on most days 30 is off the top
-// of it. getPixelForValue then returns a pixel above the plot, where the line would be drawn
-// across the legend -- so the mark appears only when the axis actually reaches it.
+// The reference marks on the temperature chart: 30 where heat starts to cost take-off
+// performance, 20 as the pleasant middle, 0 where frost and carburettor icing begin. Warm to
+// cold, red through green to blue, so the colour says which end of the scale it is.
+const TEMPERATURE_MARKS = [
+    {value: 30, color: 'rgba(200, 0, 0, 0.25)'},
+    {value: 20, color: 'rgba(0, 150, 0, 0.25)'},
+    {value: 0, color: 'rgba(0, 100, 200, 0.25)'},
+];
+
+// Unlike the cloud and wind axes, this one auto-scales, and any of these marks can be off the
+// end of it -- 30 on most days, 0 for most of the summer. getPixelForValue then returns a
+// pixel outside the plot, where the line would be drawn across the legend or the axis labels,
+// so each mark is drawn only when the axis actually reaches it.
 Chart.register({
     id: 'temperatureGridLines',
     afterDraw: function(chart) {
@@ -539,19 +545,24 @@ Chart.register({
         }
 
         const chartArea = chart.chartArea;
-        const yPosition = chart.scales.y.getPixelForValue(30);
-        if (!(yPosition >= chartArea.top && yPosition <= chartArea.bottom)) {
-            return;
+        const ctx = chart.ctx;
+
+        ctx.save();
+        ctx.lineWidth = 3;
+
+        for (const mark of TEMPERATURE_MARKS) {
+            const yPosition = chart.scales.y.getPixelForValue(mark.value);
+            if (!(yPosition >= chartArea.top && yPosition <= chartArea.bottom)) {
+                continue;
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(chartArea.left, yPosition);
+            ctx.lineTo(chartArea.right, yPosition);
+            ctx.strokeStyle = mark.color;
+            ctx.stroke();
         }
 
-        const ctx = chart.ctx;
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(chartArea.left, yPosition);
-        ctx.lineTo(chartArea.right, yPosition);
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = 'rgba(200, 0, 0, 0.25)';
-        ctx.stroke();
         ctx.restore();
     }
 });
