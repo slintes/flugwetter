@@ -13,9 +13,9 @@ All four share one time axis and pan and zoom together.
 | Chart | Shows |
 |---|---|
 | **VFR probability** | A 0–100 score per hour with a weather icon. The headline. |
-| **Temperature** | Temperature, dew point, and precipitation with probability-scaled bars. |
 | **Clouds & visibility** | Cloud layers by height with coverage, cloud base as a flight level, visibility in km. |
 | **Wind** | Wind barbs by altitude, plus 10m speed, gusts and the crosswind component. |
+| **Temperature** | Temperature, dew point, and precipitation with probability-scaled bars. |
 
 The VFR score starts at 100 and subtracts what each factor is worth: cloud base, visibility,
 total wind, crosswind and its gust spread, precipitation, heat and daylight. A factor's cost

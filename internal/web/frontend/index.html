@@ -74,12 +74,6 @@
                 </div>
 
                 <div class="chart-container">
-                    <h3>Temperature, Dew Point &amp; Precipitation</h3>
-                    <canvas id="temperatureChart" role="img"
-                            aria-label="Temperature and dew point in degrees Celsius, with hourly precipitation in millimetres"></canvas>
-                </div>
-
-                <div class="chart-container">
                     <h3>Clouds &amp; Visibility</h3>
                     <canvas id="cloudChart" role="img"
                             aria-label="Cloud layers by height in feet with coverage, cloud base as a flight level, and visibility in kilometres"></canvas>
@@ -89,6 +83,15 @@
                     <h3>Wind</h3>
                     <canvas id="windChart" role="img"
                             aria-label="Wind barbs by height in feet, with wind speed, gusts and crosswind at 10 metres in knots"></canvas>
+                </div>
+
+                <!-- Last of the four: temperature and rain say least about whether the hour
+                     is flyable, so the three charts that drive the score sit together
+                     directly under it. -->
+                <div class="chart-container">
+                    <h3>Temperature, Dew Point &amp; Precipitation</h3>
+                    <canvas id="temperatureChart" role="img"
+                            aria-label="Temperature and dew point in degrees Celsius, with hourly precipitation in millimetres"></canvas>
                 </div>
             </div>
 

@@ -524,6 +524,38 @@ Chart.register({
     }
 });
 
+// The 30 degree mark on the temperature chart, red where the other two reference lines are
+// green: this one is a ceiling rather than a floor. It is where the temperature factor's
+// cost stops being nominal, and where density altitude starts to cost take-off performance.
+//
+// Unlike the cloud and wind axes, this one auto-scales, and on most days 30 is off the top
+// of it. getPixelForValue then returns a pixel above the plot, where the line would be drawn
+// across the legend -- so the mark appears only when the axis actually reaches it.
+Chart.register({
+    id: 'temperatureGridLines',
+    afterDraw: function(chart) {
+        if (chart.canvas.id !== 'temperatureChart') {
+            return;
+        }
+
+        const chartArea = chart.chartArea;
+        const yPosition = chart.scales.y.getPixelForValue(30);
+        if (!(yPosition >= chartArea.top && yPosition <= chartArea.bottom)) {
+            return;
+        }
+
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(chartArea.left, yPosition);
+        ctx.lineTo(chartArea.right, yPosition);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(200, 0, 0, 0.25)';
+        ctx.stroke();
+        ctx.restore();
+    }
+});
+
 function drawWindBarb(ctx, x, y, speedKnots, directionDegrees) {
     ctx.save();
     
