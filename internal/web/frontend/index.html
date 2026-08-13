@@ -43,6 +43,10 @@
                      forecast's own age. Filled in by updateModelRunLabel; hidden until
                      there is a run to name. -->
                 <span class="model-run" id="modelRun" hidden></span>
+                <!-- The running build. Kept honest by the status poll: a server on a
+                     different commit reloads the page, so what is shown here is what is
+                     serving. Filled by updateBuildLabel; hidden for an unstamped build. -->
+                <span class="build-commit" id="buildCommit" hidden></span>
             </div>
 
             <!-- Above the charts on purpose: below them it sat off-screen, so a failed load

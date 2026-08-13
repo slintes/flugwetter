@@ -384,6 +384,18 @@ canvas {
     white-space: nowrap;
 }
 
+/* Quieter than the model run it follows: the forecast's age is read, the build is only
+   looked up when something is being checked. Smaller and monospaced carries most of that,
+   so the colour only steps down one notch — any dimmer and a SHA read off a phone in
+   daylight stops being legible, which is the one moment it is ever needed. */
+.build-commit {
+    margin-left: 10px;
+    color: #5f6b7a;
+    font-size: 0.78rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: nowrap;
+}
+
 .chart-instructions button {
     padding: 5px 15px;
     background: #4a6e9b;

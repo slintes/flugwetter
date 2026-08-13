@@ -3,7 +3,7 @@
 
 import { initializeCharts } from './charts.js';
 import { setupManualPanZoom, resetZoom } from './panzoom.js';
-import { initAirportPicker } from './airports.js';
+import { getAppConfig, initAirportPicker } from './airports.js';
 import { loadWeatherData, startAutoRefresh } from './api.js';
 import { applyDensity } from './viewport.js';
 
@@ -16,7 +16,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // The airport list has to arrive before the first weather request, so the initial
     // load hangs off the config fetch rather than running beside it.
-    initAirportPicker(loadWeatherData).then(loadWeatherData);
+    initAirportPicker(loadWeatherData).then(() => {
+        updateBuildLabel();
+        return loadWeatherData();
+    });
 
     // initializeCharts is synchronous, so the canvases already exist here.
     setupManualPanZoom();
@@ -24,6 +27,20 @@ document.addEventListener('DOMContentLoaded', function() {
     wireControls();
     startAutoRefresh();
 });
+
+// The commit the running binary was built from, next to the model run: one says how old the
+// weather is, the other how old the application is.
+//
+// Read once from the config, and it stays true without polling — the status check reloads
+// the page when the server moves to a different commit, so a stale label cannot outlive the
+// page showing it. Hidden for an unstamped build, where "unknown" would be noise.
+function updateBuildLabel() {
+    const commit = (getAppConfig().build || {}).commit;
+    const element = document.getElementById('buildCommit');
+
+    element.textContent = commit && commit !== 'unknown' ? `build ${commit}` : '';
+    element.hidden = element.textContent === '';
+}
 
 // The time-range buttons and the retry button used inline onclick= attributes, which is
 // what forced resetZoom and loadWeatherData to be globals. Binding them here keeps the
