@@ -277,5 +277,27 @@
     "opening_hours": "SUM 0700-SS/1800, O/T PPR; WIN 0900-SS, O/T PPR",
     "opening_hours_source": "AIP VFR AD 2-82, 28 MAY 2026",
     "website": "https://atterheide.de/flugplatzdaten/"
+  },
+  {
+    "identifier": "EDWR",
+    "name": "Borkum",
+    "latitude": 53.59583,
+    "longitude": 6.7121,
+    "runways": [
+      "13/31",
+      "05/23",
+      "12/30"
+    ],
+    "runway_headings": [
+      130.0,
+      310.0,
+      46.3,
+      226.3,
+      118.4,
+      298.4
+    ],
+    "opening_hours": "SUM until 30 SEP 0530-1700, O/T PPR; from 1 OCT Mon-Fri 0600-1600, Sat+Sun 0700-1500, O/T PPR; WIN until 28(29) FEB Mon-Fri 0700-1530, Sat+Sun 0800-1530, O/T PPR; from 1 MAR Mon-Fri 0700-1700, Sat+Sun 0800-1600, O/T PPR",
+    "opening_hours_source": "AIP VFR AD 2-19, 28 MAY 2026",
+    "website": "https://stadtwerke-borkum.de/flugplatz/"
   }
 ]
