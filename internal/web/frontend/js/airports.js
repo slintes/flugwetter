@@ -411,11 +411,32 @@ function markerStyle(selected) {
     };
 }
 
+// Built from nodes rather than from a string, like updateOpeningHours: the operating times
+// are free text out of the AIP, and text that is never parsed has no business being parsed
+// as markup on the way to the screen either.
 function airportPopup(airport) {
-    const runways = airport.runways && airport.runways.length > 0
-        ? `<br>Runway ${airport.runways.join(', ')}`
-        : '';
-    return `<strong>${airport.identifier}</strong><br>${airport.name}${runways}`;
+    const content = document.createElement('div');
+
+    const heading = document.createElement('strong');
+    heading.textContent = airport.identifier;
+    content.append(heading, document.createElement('br'), document.createTextNode(airport.name));
+
+    if (airport.runways && airport.runways.length > 0) {
+        content.append(
+            document.createElement('br'),
+            document.createTextNode(`Runway ${airport.runways.join(', ')}`));
+    }
+
+    // The same line the picker shows for the selected airfield, so the map answers "is it
+    // even open" without selecting it first. Optional, like the field itself.
+    if (airport.opening_hours) {
+        const hours = document.createElement('div');
+        hours.className = 'airport-popup-hours';
+        hours.textContent = airport.opening_hours;
+        content.appendChild(hours);
+    }
+
+    return content;
 }
 
 function updateMapSelection() {

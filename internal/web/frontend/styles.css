@@ -234,6 +234,16 @@ header h1 {
     line-height: 1.4;
 }
 
+/* The AIP's operating times in the hover detail: quieter than the name above them, and
+   allowed to wrap — the published line runs to two clauses and a sunset cap. */
+.airport-popup-hours {
+    margin-top: 4px;
+    max-width: 22em;
+    font-size: 0.85em;
+    line-height: 1.35;
+    color: #636e72;
+}
+
 .airport-tooltip::before {
     display: none;
 }
