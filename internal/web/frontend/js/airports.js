@@ -408,7 +408,9 @@ function tooltipOffsetX() {
 // how an airfield is selected.
 function markerStyle(selected) {
     const radii = markerRadii();
-    const color = selected ? '#d63031' : '#0984e3';
+    // Green for the selection, not red: red on this map means a restricted area, and a red
+    // ring around an airfield read as one more of those.
+    const color = selected ? '#16a34a' : '#0984e3';
     return {
         radius: selected ? radii.selected : radii.normal,
         color: color,
