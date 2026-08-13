@@ -12,15 +12,25 @@
 // reason the `charts` registry is one: the plugin holds the reference from the start.
 export const bands = {
     night: [],
+    twilight: [],
     restricted: [],
     day: [],
 };
 
-// The daytime window, in local hours. A fixed pair of numbers, the same for every airfield,
-// and deliberately *not* anyone's opening hours -- those carry sunset caps, lunch breaks and
-// PPR, which is why they are text under the picker rather than a rectangle here.
-export const DAY_START_HOUR = 10;
-export const DAY_END_HOUR = 20;
+// The home airfield's published operating hours, in UTC, because that is the unit the AIP
+// publishes in: EDWN is `SUM 0800-1800/SS+30; WIN 0800-1800/SS`, the same pair year round.
+//
+// UTC and not local, which is the bug this replaced. The window was written as 10:00-20:00
+// local, which is what 0800-1800Z looks like in summer -- and an hour late all winter, green
+// until 20:00 on a field that shut at 19:00.
+//
+// Hard coded rather than parsed out of `opening_hours`: that string carries sunset caps,
+// lunch breaks and PPR, none of which is a rectangle. The one cap that does bite is the
+// winter `/SS`, and the twilight band takes care of it -- the bands are disjoint, so green
+// ending where dusk begins *is* "until sunset". This is one airfield's window, which is why
+// isHomeAirport() gates it.
+export const DAY_START_HOUR_UTC = 8;
+export const DAY_END_HOUR_UTC = 18;
 
 // setBands converts the payload's night intervals to epoch milliseconds once, at load,
 // rather than parsing dates inside a draw hook that runs on every frame of a pan, and
@@ -31,46 +41,50 @@ export const DAY_END_HOUR = 20;
 // field's charts. The caller decides -- this module knows nothing about which airfield is
 // selected, which is what keeps it testable outside a browser.
 //
-// Night is subtracted from day rather than drawn over it. Both fills are translucent, so
-// overlapping them would blend into a third colour exactly where a reader most wants to
-// know which one applies -- a winter afternoon. Disjoint bands also make the draw order
-// irrelevant.
-// Precedence is night > restricted > day, applied by subtraction rather than by draw order.
-// Three translucent fills overlapping would produce blended colours that mean nothing, and
-// the one place they all meet -- an evening activation in winter -- is exactly where a
-// reader needs an unambiguous answer.
-export function setBands(nightIntervals, from, to, { daytime = true, restricted = [] } = {}) {
+// Precedence is night > twilight > restricted > day, applied by subtraction rather than by
+// draw order. Four translucent fills overlapping would produce blended colours that mean
+// nothing, and the place they meet -- a winter afternoon with an activation running into
+// dusk -- is exactly where a reader needs an unambiguous answer. Disjoint bands also make
+// the draw order irrelevant.
+//
+// Twilight sits next to night because it is the same phenomenon one step weaker, so the
+// greys read as one ramp into the dark rather than as two unrelated marks.
+export function setBands(nightIntervals, from, to,
+    { daytime = true, restricted = [], twilight = [] } = {}) {
     bands.night = toEpochIntervals(nightIntervals);
-    bands.restricted = subtractIntervals(toEpochIntervals(restricted), bands.night);
+    bands.twilight = subtractIntervals(toEpochIntervals(twilight), bands.night);
 
-    const covered = bands.night.concat(bands.restricted);
+    const dark = bands.night.concat(bands.twilight);
+    bands.restricted = subtractIntervals(toEpochIntervals(restricted), dark);
+
+    const covered = dark.concat(bands.restricted);
     bands.day = daytime ? subtractIntervals(dayBands(from, to), covered) : [];
 }
 
-// dayBands returns one DAY_START_HOUR..DAY_END_HOUR interval per local day that intersects
-// [from, to], clipped to it.
+// dayBands returns one DAY_START_HOUR_UTC..DAY_END_HOUR_UTC interval per UTC day that
+// intersects [from, to], clipped to it.
 //
-// Built from local wall-clock components, which is what makes the daylight-saving shift fall
-// out rather than be computed: 10:00 local is 08:00Z in summer and 09:00Z in winter, and the
-// band lands under the axis label either way because the axis is local too.
+// Built from UTC components, so the window is fixed where the AIP fixes it and the
+// daylight-saving shift falls out on the display side instead: 0800Z draws under the 10:00
+// tick in summer and the 09:00 tick in winter, which is where the airfield actually opens.
 export function dayBands(from, to) {
     if (!Number.isFinite(from) || !Number.isFinite(to) || !(to > from)) {
         return [];
     }
 
     const out = [];
-    // Start from local midnight of the first day, so the first window is not missed when the
-    // span opens after 10:00.
+    // Start from UTC midnight of the first day, so the first window is not missed when the
+    // span opens after 08:00Z.
     const cursor = new Date(from);
-    cursor.setHours(0, 0, 0, 0);
+    cursor.setUTCHours(0, 0, 0, 0);
 
-    for (; cursor.getTime() <= to; cursor.setDate(cursor.getDate() + 1)) {
-        const y = cursor.getFullYear();
-        const m = cursor.getMonth();
-        const d = cursor.getDate();
+    for (; cursor.getTime() <= to; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+        const y = cursor.getUTCFullYear();
+        const m = cursor.getUTCMonth();
+        const d = cursor.getUTCDate();
 
-        const start = Math.max(new Date(y, m, d, DAY_START_HOUR).getTime(), from);
-        const end = Math.min(new Date(y, m, d, DAY_END_HOUR).getTime(), to);
+        const start = Math.max(Date.UTC(y, m, d, DAY_START_HOUR_UTC), from);
+        const end = Math.min(Date.UTC(y, m, d, DAY_END_HOUR_UTC), to);
         if (end > start) {
             out.push({ from: start, to: end });
         }
@@ -158,5 +172,7 @@ export function visibleBands(intervals, min, max) {
 // Kept next to the bands themselves: this is the only place the shades are decided, and
 // they have to stay light. Wind barbs, cloud symbols and the gridlines all draw on top.
 export const NIGHT_FILL = 'rgba(100, 116, 139, 0.10)';
+// Half the night's weight, same hue: dusk is the approach to it, not a separate condition.
+export const TWILIGHT_FILL = 'rgba(100, 116, 139, 0.05)';
 export const DAY_FILL = 'rgba(34, 197, 94, 0.12)';
 export const RESTRICTED_FILL = 'rgba(239, 68, 68, 0.12)';

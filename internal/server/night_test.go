@@ -26,6 +26,26 @@ func dayWindow(t *testing.T, date string, twilightBegin, twilightEnd string) *Su
 	return resp
 }
 
+// dayWindowFull builds one with the sun inside the twilight boundaries, which is what the
+// twilight band is about: dayWindow puts sunrise on civil dawn and leaves no twilight at all.
+func dayWindowFull(t *testing.T, date, twilightBegin, sunrise, sunset, twilightEnd string) *SunriseSunsetResponse {
+	t.Helper()
+
+	resp := dayWindow(t, date, twilightBegin, twilightEnd)
+	ts, err := time.Parse(time.RFC3339, date+"T"+sunrise+":00Z")
+	if err != nil {
+		t.Fatalf("bad fixture time %q: %v", sunrise, err)
+	}
+	resp.Parsed.Sunrise = ts
+
+	ts, err = time.Parse(time.RFC3339, date+"T"+sunset+":00Z")
+	if err != nil {
+		t.Fatalf("bad fixture time %q: %v", sunset, err)
+	}
+	resp.Parsed.Sunset = ts
+	return resp
+}
+
 func mustTime(t *testing.T, s string) time.Time {
 	t.Helper()
 	ts, err := time.Parse(time.RFC3339, s)
@@ -206,4 +226,82 @@ func TestProcessWeatherData_NightBandsAgreeWithTheScore(t *testing.T) {
 
 func timeAt(day, hour int) string {
 	return time.Date(2026, 8, day, hour, 0, 0, 0, time.UTC).Format("2006-01-02T15:04")
+}
+
+// Two per date, in order: dawn ends at sunrise, dusk starts at sunset. Between them is the
+// day, and outside them the night band takes over -- which is what makes the three
+// contiguous without overlapping.
+func TestTwilightIntervals_DawnAndDuskPerDate(t *testing.T) {
+	daylight := map[string]*SunriseSunsetResponse{
+		"2026-08-09": dayWindowFull(t, "2026-08-09", "03:24", "04:05", "19:10", "19:49"),
+		"2026-08-10": dayWindowFull(t, "2026-08-10", "03:26", "04:07", "19:08", "19:46"),
+	}
+
+	got := twilightIntervals(daylight,
+		mustTime(t, "2026-08-09T00:00:00Z"), mustTime(t, "2026-08-11T00:00:00Z"))
+
+	want := []Interval{
+		{From: mustTime(t, "2026-08-09T03:24:00Z"), To: mustTime(t, "2026-08-09T04:05:00Z")},
+		{From: mustTime(t, "2026-08-09T19:10:00Z"), To: mustTime(t, "2026-08-09T19:49:00Z")},
+		{From: mustTime(t, "2026-08-10T03:26:00Z"), To: mustTime(t, "2026-08-10T04:07:00Z")},
+		{From: mustTime(t, "2026-08-10T19:08:00Z"), To: mustTime(t, "2026-08-10T19:46:00Z")},
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("got %d intervals, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if !got[i].From.Equal(want[i].From) || !got[i].To.Equal(want[i].To) {
+			t.Errorf("interval %d = %v..%v, want %v..%v", i, got[i].From, got[i].To, want[i].From, want[i].To)
+		}
+	}
+}
+
+// A forecast opening midway through a dusk gets the rest of it, not the whole of it.
+func TestTwilightIntervals_ClipsToTheSpan(t *testing.T) {
+	daylight := map[string]*SunriseSunsetResponse{
+		"2026-08-09": dayWindowFull(t, "2026-08-09", "03:24", "04:05", "19:10", "19:49"),
+	}
+
+	got := twilightIntervals(daylight,
+		mustTime(t, "2026-08-09T19:30:00Z"), mustTime(t, "2026-08-09T19:40:00Z"))
+
+	if len(got) != 1 {
+		t.Fatalf("got %d intervals, want 1: %+v", len(got), got)
+	}
+	if !got[0].From.Equal(mustTime(t, "2026-08-09T19:30:00Z")) || !got[0].To.Equal(mustTime(t, "2026-08-09T19:40:00Z")) {
+		t.Errorf("got %v..%v, want the span itself", got[0].From, got[0].To)
+	}
+}
+
+// The rule the night band already follows: a date nobody could resolve is drawn as nothing,
+// because an unshaded stretch reads as "no data" and a shaded one reads as a fact.
+func TestTwilightIntervals_SkipsAnUnresolvedDate(t *testing.T) {
+	daylight := map[string]*SunriseSunsetResponse{
+		"2026-08-09": dayWindowFull(t, "2026-08-09", "03:24", "04:05", "19:10", "19:49"),
+		"2026-08-10": nil,
+	}
+
+	got := twilightIntervals(daylight,
+		mustTime(t, "2026-08-09T00:00:00Z"), mustTime(t, "2026-08-11T00:00:00Z"))
+
+	if len(got) != 2 {
+		t.Fatalf("got %d intervals, want the 2 from the resolved date: %+v", len(got), got)
+	}
+}
+
+// Inside the polar circle the sun can clear civil twilight in an instant, or never rise at
+// all. Either way an empty interval is not a band.
+func TestTwilightIntervals_DropsAZeroLengthStretch(t *testing.T) {
+	daylight := map[string]*SunriseSunsetResponse{
+		// dayWindow puts sunrise on civil dawn and sunset on civil dusk.
+		"2026-08-09": dayWindow(t, "2026-08-09", "03:24", "19:49"),
+	}
+
+	got := twilightIntervals(daylight,
+		mustTime(t, "2026-08-09T00:00:00Z"), mustTime(t, "2026-08-10T00:00:00Z"))
+
+	if len(got) != 0 {
+		t.Errorf("got %d intervals, want none: %+v", len(got), got)
+	}
 }

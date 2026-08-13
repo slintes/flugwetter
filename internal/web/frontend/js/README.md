@@ -15,7 +15,7 @@ Native ES modules. No bundler, no build step, no dependencies — `index.html` l
 | `barbs.js` | Wind barb arithmetic, separated so it is testable without a canvas. |
 | `time.js` | `toEpochMs` — the UTC parsing every series depends on. |
 | `status.js` | Whether a new model run means the forecast on screen is out of date. |
-| `bands.js` | The shaded bands behind the charts — night, ED-R activity, daytime — and clipping them to what is on screen. |
+| `bands.js` | The shaded bands behind the charts — night, civil twilight, ED-R activity, the home field's hours — and clipping them to what is on screen. |
 | `restrictions.js` | The airspace use plan: when restricted areas are active, for the charts and the map. |
 | `vfr-penalties.js` | Formats the VFR score's breakdown for the tooltip: what the hour lost, and to what. |
 | `weather-icons.js` | WMO code → icon filename, including the `-night` variants. |

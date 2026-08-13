@@ -357,24 +357,11 @@ func nightIntervals(daylight map[string]*SunriseSunsetResponse, from, to time.Ti
 		return nil
 	}
 
-	dates := make([]string, 0, len(daylight))
-	for date := range daylight {
-		dates = append(dates, date)
-	}
-	// ISO dates sort correctly as strings.
-	sort.Strings(dates)
+	dates := sortedDates(daylight)
 
 	var out []Interval
 	add := func(start, end time.Time) {
-		if start.Before(from) {
-			start = from
-		}
-		if end.After(to) {
-			end = to
-		}
-		if end.After(start) {
-			out = append(out, Interval{From: start, To: end})
-		}
+		out = clipTo(out, start, end, from, to)
 	}
 
 	// The forecast usually opens in the middle of a night, before the first dawn it knows
@@ -402,6 +389,60 @@ func nightIntervals(daylight map[string]*SunriseSunsetResponse, from, to time.Ti
 		add(window.Parsed.CivilTwilightEnd, to)
 	}
 
+	return out
+}
+
+// twilightIntervals turns the same windows into the two civil-twilight stretches of each
+// date: dawn, from civil twilight to sunrise, and dusk, from sunset to civil twilight.
+//
+// These are the hours the score charges the daylight penalty for -- legal but not
+// comfortable -- and until they were drawn they looked exactly like midday. Both live inside
+// one date, so unlike the night this needs no pairing across dates and no isNextDay.
+//
+// A date whose lookup failed contributes nothing, for the reason nightIntervals gives.
+func twilightIntervals(daylight map[string]*SunriseSunsetResponse, from, to time.Time) []Interval {
+	if len(daylight) == 0 || !to.After(from) {
+		return nil
+	}
+
+	var out []Interval
+	for _, date := range sortedDates(daylight) {
+		window := daylight[date]
+		if window == nil {
+			continue
+		}
+		out = clipTo(out, window.Parsed.CivilTwilightBegin, window.Parsed.Sunrise, from, to)
+		out = clipTo(out, window.Parsed.Sunset, window.Parsed.CivilTwilightEnd, from, to)
+	}
+
+	return out
+}
+
+// sortedDates returns the resolved dates in order. ISO dates sort correctly as strings, and
+// the frontend's interval arithmetic assumes what it is given is ascending.
+func sortedDates(daylight map[string]*SunriseSunsetResponse) []string {
+	dates := make([]string, 0, len(daylight))
+	for date := range daylight {
+		dates = append(dates, date)
+	}
+	sort.Strings(dates)
+	return dates
+}
+
+// clipTo appends [start, end) trimmed to the [from, to) span, dropping it when nothing is
+// left. The night and twilight bands differ only in which boundaries they pair up; the
+// clipping is the same, and so is the rule that an interval outside the forecast is not
+// drawn rather than stretched to fit.
+func clipTo(out []Interval, start, end, from, to time.Time) []Interval {
+	if start.Before(from) {
+		start = from
+	}
+	if end.After(to) {
+		end = to
+	}
+	if end.After(start) {
+		return append(out, Interval{From: start, To: end})
+	}
 	return out
 }
 
@@ -434,6 +475,7 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 	daylight := resolveDaylight(ctx, airport, apiResponse.Hourly.Time)
 	from, to := forecastWindow(apiResponse.Hourly.Time)
 	processed.NightPeriods = nightIntervals(daylight, from, to)
+	processed.TwilightPeriods = twilightIntervals(daylight, from, to)
 
 	// Process temperature and cloud data
 	for i, timeStr := range apiResponse.Hourly.Time {

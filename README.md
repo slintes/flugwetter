@@ -26,12 +26,13 @@ the hour could not be scored at all and is rendered as "no data", not as bad wea
 Every limit and every penalty lives in one table, `vfrLimits` in `internal/server/vfr.go`.
 Hovering an hour on the VFR chart lists exactly what its score lost and to what.
 
-All four charts shade the hours that are night, bounded by civil twilight — the same
-boundary that scores those hours 0, so the shading and the score always agree — and shade
-10:00 to 20:00 local green, a fixed daytime window that night takes precedence over. The
-green says nothing about any particular airfield: each one's published operating times are
-shown under the picker instead, copied verbatim from the AIP with the page it came from and
-a link to the airfield's own site.
+All four charts shade the light behind the data: grey for night, bounded by civil twilight —
+the same boundary that scores those hours 0, so the shading and the score always agree — and
+a lighter grey for the civil twilight either side of it, the hours that are legal but cost
+the daylight penalty. At the home airfield a green band marks its published operating hours,
+0800–1800Z, which is 10:00–20:00 local in summer and 09:00–19:00 in winter. Every other
+airfield's operating times are shown as text under the picker, copied verbatim from the AIP
+with the page it came from and a link to the airfield's own site.
 
 At the home airfield the charts also shade the hours ED-R 37A — the restricted area EDWN
 sits inside — is active, in red, between night and green in precedence. The times come from

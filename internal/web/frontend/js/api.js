@@ -159,6 +159,9 @@ export function updateCharts(data) {
     const span = forecastSpan(data.temperature_data);
     const home = isHomeAirport();
     setBands(data.night_periods, span.from, span.to, {
+        // Drawn everywhere, unlike the two below: the light over an airfield is a property
+        // of that airfield, not of whose home it is.
+        twilight: data.twilight_periods,
         daytime: home,
         // The ED-R band describes the airspace over one field. Elsewhere it would be a red
         // stripe about somewhere the reader is not.

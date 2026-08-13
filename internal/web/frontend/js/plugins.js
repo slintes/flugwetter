@@ -10,7 +10,7 @@
 import { weatherCodeToIcon } from './weather-icons.js';
 import { barbComponents, isCalm } from './barbs.js';
 import { axisWidths, isNarrowViewport, vfrMetrics, tooltipFont } from './viewport.js';
-import { bands, visibleBands, NIGHT_FILL, DAY_FILL, RESTRICTED_FILL } from './bands.js';
+import { bands, visibleBands, NIGHT_FILL, TWILIGHT_FILL, DAY_FILL, RESTRICTED_FILL } from './bands.js';
 
 // Cache for weather icons
 const weatherIconCache = {};
@@ -94,7 +94,9 @@ Chart.Interaction.modes.timeNearest = function(chart, e, options, useFinalPositi
 // pass, and a plain value is what guarantees both see the same number; a scriptable font
 // re-resolves per call, which is a needless way to invite the two apart. Rewriting them
 // here is also what makes them follow a resize, exactly as the axis widths do below.
-// backgroundBands shades the hours that are night on all four charts.
+
+// backgroundBands shades the light and the airspace behind all four charts: night, the
+// civil twilight either side of it, an active ED-R, and the home field's opening window.
 //
 // beforeDatasetsDraw, so it sits behind the data rather than over it -- an afterDraw hook
 // would put a grey wash on top of the wind barbs and the VFR icons. Positions come from
@@ -111,8 +113,10 @@ Chart.register({
 
         const day = visibleBands(bands.day, scale.min, scale.max);
         const restricted = visibleBands(bands.restricted, scale.min, scale.max);
+        const twilight = visibleBands(bands.twilight, scale.min, scale.max);
         const night = visibleBands(bands.night, scale.min, scale.max);
-        if (day.length === 0 && restricted.length === 0 && night.length === 0) {
+        if (day.length === 0 && restricted.length === 0
+            && twilight.length === 0 && night.length === 0) {
             return;
         }
 
@@ -133,11 +137,12 @@ Chart.register({
             }
         };
 
-        // Weakest claim first, strongest last. The three lists are disjoint -- setBands
+        // Weakest claim first, strongest last. The four lists are disjoint -- setBands
         // subtracts them from each other -- so the order is redundant, and it is here to
         // state the precedence if that ever changes.
         paint(day, DAY_FILL);
         paint(restricted, RESTRICTED_FILL);
+        paint(twilight, TWILIGHT_FILL);
         paint(night, NIGHT_FILL);
         ctx.restore();
     }

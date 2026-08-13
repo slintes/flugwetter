@@ -36,6 +36,10 @@ type ProcessedWeatherData struct {
 	// NightPeriods are the stretches the charts shade grey, bounded by civil twilight --
 	// the same boundary the VFR score zeroes an hour against, so the two cannot disagree.
 	NightPeriods []Interval `json:"night_periods,omitempty"`
+	// TwilightPeriods are the civil-twilight stretches either side of the day: sunset to
+	// civil dusk, civil dawn to sunrise. The same boundaries the score charges the daylight
+	// penalty for, drawn a lighter grey than the night they lead into.
+	TwilightPeriods []Interval `json:"twilight_periods,omitempty"`
 }
 
 // Interval is a half-open stretch of time [From, To).
