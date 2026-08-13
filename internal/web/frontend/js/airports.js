@@ -400,14 +400,21 @@ function tooltipOffsetX() {
     return markerRadii().selected + 6;
 }
 
+// A ring rather than a dot: zoomed in, the marker sits exactly on the runway it marks, and a
+// solid fill covered the one piece of the map that says which way it points.
+//
+// The fill stays faintly there rather than going to zero. An unpainted SVG fill takes no
+// pointer events, which would leave only the 3px ring clickable — and clicking the marker is
+// how an airfield is selected.
 function markerStyle(selected) {
     const radii = markerRadii();
+    const color = selected ? '#d63031' : '#0984e3';
     return {
         radius: selected ? radii.selected : radii.normal,
-        color: '#ffffff',
-        weight: 2,
-        fillColor: selected ? '#d63031' : '#0984e3',
-        fillOpacity: 1
+        color: color,
+        weight: 3,
+        fillColor: color,
+        fillOpacity: 0.15
     };
 }
 
