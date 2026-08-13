@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { shouldReload, isKnownRun, latestModelRun, formatModelRun } from '../frontend/js/status.js';
+import { shouldReload, shouldReloadPage, isKnownRun, latestModelRun, formatModelRun } from '../frontend/js/status.js';
 
 const MAX_AGE = 15 * 60 * 1000;
 const RUN_06Z = '2026-08-07T06:00:00Z';
@@ -77,4 +77,26 @@ test('formatModelRun renders nothing for an unknown run', () => {
     assert.equal(formatModelRun(null), '');
     assert.equal(formatModelRun('0001-01-01T00:00:00Z'), '');
     assert.equal(formatModelRun('not-a-date'), '');
+});
+
+// A deployment does not change the model run, so the forecast check above cannot notice one.
+// A tab left open across a deploy otherwise runs replaced frontend code until someone
+// reloads it by hand -- harmless while the wire format holds, broken the moment a field is
+// renamed.
+test('a new build reloads the page', () => {
+    assert.equal(shouldReloadPage('601c20f', '7a337e0'), true);
+});
+
+test('the same build does not', () => {
+    assert.equal(shouldReloadPage('601c20f', '601c20f'), false);
+});
+
+// Either side unknown means there is nothing to compare. A config fetch that failed leaves
+// no loaded commit, and an unstamped binary reports none -- neither is a reason to reload a
+// working page, and reloading a developer's page under them is pure nuisance.
+test('an unknown commit on either side reloads nothing', () => {
+    assert.equal(shouldReloadPage('', '7a337e0'), false);
+    assert.equal(shouldReloadPage('601c20f', ''), false);
+    assert.equal(shouldReloadPage(undefined, undefined), false);
+    assert.equal(shouldReloadPage('601c20f', null), false);
 });

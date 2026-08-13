@@ -346,6 +346,10 @@ type StatusResponse struct {
 	// fallen back to the backstop TTL. Surfaced in the page rather than only logged: a
 	// silent fallback is one that runs for months before anyone notices.
 	ModelRunsDegraded bool `json:"model_runs_degraded"`
+	// Commit is the running binary's, so an already-open page can notice it is running
+	// frontend code this server no longer serves. /api/config carries the full BuildInfo
+	// but is read once at load; this endpoint is the one that gets asked again.
+	Commit string `json:"commit"`
 }
 
 func getStatus(w http.ResponseWriter, r *http.Request) {
@@ -358,6 +362,7 @@ func getStatus(w http.ResponseWriter, r *http.Request) {
 	status := StatusResponse{
 		LatestInitializedAt: modelRuns.latestInitializedAt(),
 		ModelRunsDegraded:   degraded,
+		Commit:              buildInfo().Commit,
 	}
 	if entry, ok := cachedEntry(defaultAirport.Identifier); ok {
 		status.GeneratedAt = entry.data.GeneratedAt

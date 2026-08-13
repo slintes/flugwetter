@@ -2,9 +2,9 @@
 
 import { charts } from './charts.js';
 import { applyInitialZoomOnce } from './panzoom.js';
-import { getCurrentAirportId, isHomeAirport } from './airports.js';
+import { getAppConfig, getCurrentAirportId, isHomeAirport } from './airports.js';
 import { toEpochMs } from './time.js';
-import { shouldReload, latestModelRun, formatModelRun } from './status.js';
+import { shouldReload, shouldReloadPage, latestModelRun, formatModelRun } from './status.js';
 import { setBands } from './bands.js';
 import { loadRestrictions, windowsFor, HOME_AREA } from './restrictions.js';
 
@@ -332,6 +332,11 @@ export const STATUS_POLL_INTERVAL_MS = 5 * 60 * 1000;
 // is what the refresh interval used to be unconditionally.
 export const MAX_AGE_MS = 15 * 60 * 1000;
 
+// Set once a page reload has been asked for, so a server that flaps between two builds --
+// two backends behind one proxy, a rollback mid-poll -- cannot put this tab in a reload
+// loop. At most one reload per page load; the reloaded page reads the new commit and agrees.
+let pageReloadRequested = false;
+
 // checkForNewData asks the backend what run it is on and reloads only if that differs from
 // what is on screen. A network failure here is not surfaced: the forecast already displayed
 // is still valid, and the next poll will try again.
@@ -348,6 +353,15 @@ export async function checkForNewData() {
 
     runsDegraded = Boolean(status && status.model_runs_degraded);
     renderErrorArea();
+
+    // Before the forecast check: if this tab is running code the server has replaced, there
+    // is no point fetching 63KB into it first. The reload brings the new forecast anyway.
+    const loadedCommit = (getAppConfig().build || {}).commit;
+    if (!pageReloadRequested && shouldReloadPage(loadedCommit, status && status.commit)) {
+        pageReloadRequested = true;
+        window.location.reload();
+        return;
+    }
 
     const latest = status ? status.latest_initialized_at : null;
     if (shouldReload(renderedRun, latest, Date.now() - lastLoadedAt, MAX_AGE_MS)) {

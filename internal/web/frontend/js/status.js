@@ -31,6 +31,23 @@ export function shouldReload(renderedRun, latestRun, ageMs, maxAgeMs) {
     return latestRun !== renderedRun;
 }
 
+// shouldReloadPage decides whether the page itself is out of date -- a deployment happened
+// and this tab is running frontend code the server no longer serves.
+//
+// The forecast reload above cannot cover this: a deployment does not change the model run,
+// so a tab left open across one keeps its old JS indefinitely. That is harmless while the
+// wire format holds and breaks the page the moment a field is renamed.
+//
+// Both commits must be known and differ. An unstamped build reports "unknown" on both sides,
+// which compares equal and reloads nothing -- right, because a developer running `go run .`
+// is the one case where reloading the page under them is pure nuisance.
+export function shouldReloadPage(loadedCommit, servedCommit) {
+    if (!loadedCommit || !servedCommit) {
+        return false;
+    }
+    return loadedCommit !== servedCommit;
+}
+
 // latestModelRun picks the run the UI labels the forecast with: the newest across the
 // models behind `icon_seamless`.
 //
