@@ -74,6 +74,26 @@ bearing = (degrees(atan2(y, x)) + 360) % 360
 outlasts a foreground command's timeout. Run it in the background with sleeps between
 queries and poll the output file, rather than in a blocking call.
 
+**It also just fails.** HTTP 504 from a healthy query, twice in a row for Borkum, then a 200
+for the identical query minutes later — the public instance is shared and overloaded, which
+looks nothing like the 429 and needs no backoff, only another attempt. Write the fetch as a
+retry loop rather than a single call, and treat "no `elements` key" as a failure too: a 200
+carrying an Overpass error page parses as JSON and then yields no runways.
+
+```bash
+for host in https://overpass-api.de/api/interpreter https://overpass.kumi.systems/api/interpreter; do
+  for try in 1 2 3; do
+    code=$(curl -s -o "$out" -w '%{http_code}' --max-time 150 "$host" --data-urlencode "data=$query")
+    if [ "$code" = "200" ] && grep -q '"elements"' "$out"; then exit 0; fi
+    sleep 40
+  done
+done
+```
+
+`overpass.kumi.systems` is a drop-in mirror, same query syntax, and worth having in the loop
+as the second host — it was not needed for Borkum, but the main instance failing three times
+running is not a scenario worth discovering by hand.
+
 Sanity-check the result against the designator: they should agree to within about 10°, since
 the designator is the magnetic heading rounded. Langeoog's "05/23" came out as true
 54.9/234.9 — 5° off, which is the magnetic variation and exactly why the designator is not
