@@ -7,7 +7,7 @@ import test from 'node:test';
 process.env.TZ = 'Europe/Berlin';
 
 const {
-    toEpochIntervals, visibleBands, NIGHT_FILL, DAY_FILL,
+    toEpochIntervals, visibleBands, NIGHT_FILL, TWILIGHT_FILL, DAY_FILL,
     dayBands, subtractIntervals, setBands, bands,
     DAY_START_HOUR_UTC, DAY_END_HOUR_UTC,
 } = await import('../frontend/js/bands.js');
@@ -67,11 +67,19 @@ test('visibleBands copes with a degenerate range', () => {
 });
 
 // Low alpha on purpose: wind barbs, cloud symbols and the gridlines all draw over these.
-test('the fills stay faint', () => {
-    for (const [name, fill] of [['night', NIGHT_FILL], ['day', DAY_FILL]]) {
-        const alpha = Number(fill.match(/([\d.]+)\)$/)[1]);
-        assert.ok(alpha > 0 && alpha <= 0.15, `${name} alpha ${alpha} should be subtle`);
+// The bands sit behind wind barbs, cloud symbols and four line series, and everything drawn
+// over them has to stay legible -- but they were also once so faint nobody could see them.
+// The ceiling is what keeps the data readable; the ordering is what makes the two greys read
+// as one ramp into the dark rather than as two unrelated marks.
+test('the fills stay light enough to draw over, and the greys ramp', () => {
+    const alpha = fill => Number(fill.match(/([\d.]+)\)$/)[1]);
+
+    for (const [name, fill] of [['night', NIGHT_FILL], ['twilight', TWILIGHT_FILL],
+                                ['day', DAY_FILL]]) {
+        assert.ok(alpha(fill) > 0 && alpha(fill) <= 0.25, `${name} alpha ${alpha(fill)}`);
     }
+    assert.ok(alpha(TWILIGHT_FILL) < alpha(NIGHT_FILL),
+        'twilight must be lighter than the night it leads into');
 });
 
 // One window per local day, each starting and ending on the configured local hour. Asserted

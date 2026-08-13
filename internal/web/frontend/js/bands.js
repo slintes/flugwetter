@@ -171,8 +171,8 @@ export function visibleBands(intervals, min, max) {
 
 // Kept next to the bands themselves: this is the only place the shades are decided, and
 // they have to stay light. Wind barbs, cloud symbols and the gridlines all draw on top.
-export const NIGHT_FILL = 'rgba(100, 116, 139, 0.10)';
+export const NIGHT_FILL = 'rgba(100, 116, 139, 0.22)';
 // Half the night's weight, same hue: dusk is the approach to it, not a separate condition.
-export const TWILIGHT_FILL = 'rgba(100, 116, 139, 0.05)';
+export const TWILIGHT_FILL = 'rgba(100, 116, 139, 0.11)';
 export const DAY_FILL = 'rgba(34, 197, 94, 0.12)';
 export const RESTRICTED_FILL = 'rgba(239, 68, 68, 0.12)';
