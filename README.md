@@ -36,10 +36,11 @@ with the page it came from and a link to the airfield's own site.
 
 At the home airfield the charts also shade the hours ED-R 37A — the restricted area EDWN
 sits inside — is active, in red, between night and green in precedence. The times come from
-the DFS airspace use plan, which the map picker shows in full: every area with published
-activity is drawn in red, and clicking one lists its times and limits. The plan covers
-activations below FL100, is published only a day or two ahead, and is explicitly not the
-authoritative source — AIP ENR 5.1 and NOTAM are.
+the DFS airspace use plan, which the map picker also draws: every area with published
+activity is shown in red, and clicking one lists its times and limits. Only areas reaching
+below 8000 ft are asked for — higher ones are none of this dashboard's business. The plan
+covers activations below FL100, is published only a day or two ahead, and is explicitly not
+the authoritative source — AIP ENR 5.1 and NOTAM are.
 
 Crosswind is computed against **true** runway headings taken from OpenStreetMap geometry
 rather than the published magnetic designators, and a multi-runway field is scored on its
