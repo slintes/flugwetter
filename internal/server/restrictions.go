@@ -32,19 +32,32 @@ import (
 //   - DFS states on that page that the plan covers only activations below FL100, "may not
 //     be complete", and that AIP ENR 5.1 and NOTAM remain authoritative. The frontend shows
 //     that disclaimer; this file must not pretend otherwise.
-//   - The horizon is roughly a day. Beyond it the plan simply has not been published, which
-//     is not the same as "not active", and an empty result must never be served as if it
-//     were "nothing is happening".
+//   - The plan thins out with distance rather than stopping. Measured on 17 Aug 2026: 38-49
+//     areas a day for the first five days, 26-31 in the second week, 13-17 in the third, and
+//     a handful of advance bookings as far out as D+45. Only the first few days are the
+//     complete picture; beyond that an absent area means "nobody has filed yet", which is
+//     not the same as "not active", and an empty result must never be served as if it were
+//     "nothing is happening".
+//
+// One property of the endpoint that is easy to trip over: **it clips the activation times it
+// returns to the requested window**. Asking for 07:00-20:00 reports an activation running to
+// 20:30 as ending at 20:00. Narrowing the query to save bytes therefore silently shortens
+// every window that straddles an edge.
 const (
 	aupURL = "https://ais.dfs.de/pilotservice/briefing/aup/ajax/aup_briefing.jsp"
 
-	// The AUP is published about a day ahead, so anything shorter than this wastes nothing
-	// and anything longer risks missing a same-day amendment by half a working day.
+	// Amendments land during the working day, so anything shorter than this wastes nothing
+	// and anything longer risks missing one by half a working day.
 	restrictionsPollInterval = 6 * time.Hour
 
-	// How far ahead to ask. The forecast is seven days; the plan will cover one or two of
-	// them, and asking for the rest costs nothing.
-	restrictionsHorizonDays = 7
+	// How far ahead to ask. Past the forecast's seven days on purpose: the charts can only
+	// shade what they have weather for, but the map lists every window it is given, and
+	// three weeks of them is the answer to "is that area busy the week after next".
+	//
+	// 21 rather than more because that is where the return stops paying: D+21 costs 191KB
+	// against 121KB for a week, D+28 adds 9KB, and a 60-day query adds 6KB more and finds
+	// nothing past D+45.
+	restrictionsHorizonDays = 21
 
 	// Ask only for airspace reaching below 8000 ft. This does not truncate the limits that
 	// come back -- an area from A055 to F350 still appears, because it affects you below

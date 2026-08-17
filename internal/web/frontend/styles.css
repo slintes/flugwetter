@@ -179,10 +179,15 @@ header h1 {
     color: #8a95a1;
 }
 
-/* The window list inside a restricted-area popup. */
+/* The window list inside a restricted-area popup.
+   Three weeks of plan means a busy training area brings dozens of windows, which would run
+   the popup off the top of the map. Scrolls instead, so the first few -- the ones anyone is
+   actually flying against -- are always the ones on screen. */
 .edr-windows {
     margin: 4px 0 0;
     padding-left: 18px;
+    max-height: 40vh;
+    overflow-y: auto;
     font-variant-numeric: tabular-nums;
 }
 
