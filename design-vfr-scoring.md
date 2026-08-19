@@ -35,15 +35,21 @@ floats in others), and no way to explain a score without running the server unde
 `vfrLimits` is the single source of truth for every limit and every penalty. Retuning the
 score is editing numbers in that table and nothing else.
 
-The alternative considered was a shared cost-per-severity table (one global "difficult
-costs 20") with per-factor thresholds and a weight. It is smaller, but it forces every
-factor onto the same cost scale, and these factors genuinely differ: a difficult ceiling
-and a difficult gust spread are not worth the same. Each factor carries its own costs.
+**Revised.** This originally rejected a shared cost-per-severity table with per-factor
+weights, on the grounds that a difficult ceiling and a difficult gust spread are not worth
+the same. In practice the per-factor costs said the opposite of what they meant: "critical"
+cost 20 in one factor and 40 in another, so the severity words were labels rather than
+statements, and retuning meant arguing about forty numbers instead of eight.
+
+The ladder is now shared — `severityCost`, one cost per severity — and a factor's `weight`
+multiplies it. Where a factor reaches a severity is still entirely its own business, which
+is where the real difference between a ceiling and a gust spread lives. A factor is four
+thresholds and one weight.
 
 ### D2 — Costs ramp between anchors instead of stepping
 
-A factor's curve is a handful of `anchor{severity, at, cost}` points and the cost between
-two of them is linearly interpolated. The gust spread that used to cost a flat 5 points for
+A factor's curve is a handful of `anchor{severity, at}` points and the cost between two of
+them is linearly interpolated, the ladder's cost at each end times the factor's weight. The gust spread that used to cost a flat 5 points for
 crossing a line now costs a fraction of that, and a value just short of a hard limit costs
 nearly what the limit does rather than nothing at all.
 
@@ -56,16 +62,24 @@ at one point and grows into it.
 Cloud base and visibility get worse as they fall; wind, crosswind, rain and heat as they
 rise. Rather than a `worse: higher|lower` field that can contradict the thresholds next to
 it, the direction is read off the thresholds themselves. `init()` validates every curve —
-at least two anchors, strictly monotone thresholds, strictly increasing costs, `perfect`
-first and free, `noGo` last — and panics on a malformed table, the same way a malformed
+at least two anchors, strictly monotone thresholds, strictly increasing severities,
+`perfect` first, a positive weight, and no `noGo` anchor — and panics on a malformed table,
+the same way a malformed
 `airports.json` is fatal at startup. A curve that runs backwards would otherwise score
 every hour wrong in silence.
 
-### D4 — Hard limits are anchors like any other, and any one of them ends the hour
+### D4 — The last limit is the wall, and any one of them ends the hour
 
 The old ladder had three hard zeros written as early returns: ceiling, visibility and
-civil twilight. They are now `noGo` anchors, most factors have one, and adding or removing
-one is a line in the table rather than a branch in the evaluator.
+civil twilight. They are now a `wall` flag on the factor, most factors carry one, and
+adding or removing one is a line in the table rather than a branch in the evaluator.
+
+**Revised.** The wall was originally a fifth anchor beyond the critical one, with the cost
+ramping from critical up to 100 across the gap. That made the last band the steepest and
+least explicable part of the table — 7 km of visibility cost 65 points on a 5 km wall,
+which is most of an hour for a value that is legal and flyable. The critical limit and the
+wall are now one number: reaching it costs `critical`, passing it ends the hour. Five bands,
+four thresholds.
 
 The crosswind limit resolves a discrepancy that sat in `CLAUDE.md` for a while: the file
 claimed a strong crosswind scored 0, the code only ever accumulated a penalty, and 20 kn
@@ -78,9 +92,8 @@ that is worth calling off a flight for on its own.
 ### D5 — An anchor names the band that ends at it
 
 A value is "difficult" from the moment it leaves the good anchor until it reaches the
-difficult one. The exception is `noGo`, which names a wall rather than a band — the last
-approach to it keeps the previous band's name, because calling a value that is nearly at
-the limit "no-go" would claim the hour was already lost.
+difficult one. There is no band named "no-go": the wall is a property of the factor, not a
+point a value lands on, so the worst a scored hour can be called is critical.
 
 ### D6 — The breakdown is part of the API
 
@@ -97,8 +110,9 @@ source, the server and a debug log.
 
 It has no continuous scale — the twilight boundaries move with the date and the latitude,
 so there is nothing constant to put in a threshold column. It is scored as an ordinal
-(day, twilight, night) with the same anchor machinery: twilight costs a fixed penalty,
-night is a no-go. Keeping it in the table is what makes the table complete; the alternative
+(day, twilight, night) with the same anchor machinery: one named band for twilight and the
+wall at night, weighted below 1 because a legal-but-uncomfortable hour is not worth what a
+critical crosswind is. Keeping it in the table is what makes the table complete; the alternative
 was a special case in the evaluator, which is exactly what this design set out to remove.
 
 Its value is meaningless to a reader, so it is the one factor with no unit, and the tooltip

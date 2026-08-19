@@ -296,9 +296,9 @@ func TestProcessWeatherData_ScaledPenaltyReachesTheWireFormat(t *testing.T) {
 		t.Errorf("Scale.Value = %v, want 88 -- the hour's probability must reach the score",
 			rain.Scale.Value)
 	}
-	// 3.2mm/h is worth 21.7 if it falls, and at 88% the weight has already reached 1.
-	if rain.Cost != 22 {
-		t.Errorf("Cost = %d, want 22 (the amount's cost, scaled by the probability)", rain.Cost)
+	// 3.2mm/h is worth 41 if it falls, and at 88% the weight has already reached 1.
+	if rain.Cost != 41 {
+		t.Errorf("Cost = %d, want 41 (the amount's cost, scaled by the probability)", rain.Cost)
 	}
 }
 

@@ -48,21 +48,32 @@ func (s severity) String() string {
 	return "unknown"
 }
 
-// anchor is one point on a factor's cost curve: at `at`, in the factor's unit, the factor
-// costs `cost` points.
-//
-// Two costs are implicit and must be left at zero in the table: the first anchor is always
-// `perfect` and costs nothing, and a `noGo` anchor costs noGoCost -- reaching it zeroes the
-// whole hour, so its exact value only shapes the ramp leading into it.
+// anchor is one point on a factor's curve: at `at`, in the factor's unit, the factor has
+// reached this severity. What that costs comes from the ladder below, not from the anchor.
 type anchor struct {
 	severity severity
 	at       float64
-	cost     float64
 }
 
-// noGoCost is where the ramp into a no-go anchor arrives. It is not subtracted from
-// anything: a factor that reaches its no-go returns 0% for the hour outright.
-const noGoCost = 100
+// severityCost is the ladder every factor is scored against. A severity means the same
+// thing everywhere; only where a factor reaches it, and how heavily it counts, are the
+// factor's own business.
+//
+// The shape is deliberate: "good" is nearly free, because an hour that is merely good on
+// four counts is still a fine hour and the previous table nibbled it down to 75. From
+// there it steepens, so that one factor at its critical limit dominates the score rather
+// than being outvoted by three minor ones.
+var severityCost = map[severity]float64{
+	perfect:   0,
+	good:      1,
+	difficult: 15,
+	critical:  50,
+}
+
+// noGoPenaltyCost is what the breakdown reports for the factor that ended the hour. It is
+// not subtracted from anything -- a no-go returns 0% outright -- and the frontend renders
+// it as a reason rather than as a subtraction.
+const noGoPenaltyCost = 100
 
 type factor struct {
 	// name and unit are for the breakdown and the debug log only; nothing in the scoring
@@ -77,7 +88,22 @@ type factor struct {
 
 	// curve is ordered from perfect to worst. Whether the factor gets worse as its value
 	// rises or falls is inferred from the direction the thresholds run in.
+	//
+	// Four anchors is the usual shape -- perfect, good, difficult, critical -- which is
+	// five bands once `wall` closes the last one.
 	curve []anchor
+
+	// weight multiplies the ladder for this factor. 1.0 means "a critical value here is
+	// what critical means"; above it the factor outranks its peers. It is the only place
+	// one factor is allowed to matter more than another, which is what keeps the severity
+	// words comparable across the table.
+	weight float64
+
+	// wall makes the last anchor a no-go: past it the hour scores 0 outright. Without it
+	// the cost stops rising at the last anchor instead of ending the hour -- precipitation
+	// is the case, because its cost is scaled by a probability and a no-go multiplied by
+	// an unlikely forecast is not a decision anyone should ship.
+	wall bool
 
 	// scaledBy, when set, multiplies this factor's cost by how likely its value is to
 	// materialise. The curve stays in the factor's own unit, so its anchors keep reading
@@ -170,9 +196,12 @@ const (
 
 // vfrLimits is the table. Every limit and every penalty in the application lives here.
 //
-// Read `{difficult, 20, 25}` as "at FL20 this factor costs 25 points, and it is a
-// difficult one". Costs between two anchors are interpolated, costs beyond the last anchor
-// are clamped to it, and a no-go anchor ends the scoring at 0% for the hour.
+// A factor is four thresholds and one weight. Read `{difficult, 20}` as "at FL20 this
+// factor has become difficult"; what difficult costs is severityCost, the same everywhere,
+// times the factor's weight. Costs ramp linearly between anchors, and `wall: true` makes
+// the last anchor a no-go -- the value that ends the hour outright.
+//
+// Five bands, four numbers: perfect | good | difficult | critical | no-go.
 var vfrLimits = []factor{
 	{
 		// Cloud base is a flight level (feet/100), and only layers covering 40% or more
@@ -186,17 +215,22 @@ var vfrLimits = []factor{
 			return float64(*c.cloudBaseFL), true
 		},
 		curve: []anchor{
-			{perfect, 50, 0},
-			{good, 30, 1},
-			{difficult, 20, 5},
-			{critical, 15, 20},
-			{noGo, 10, 0},
+			{perfect, 50},
+			{good, 25},
+			{difficult, 20},
+			{critical, 10},
 		},
+		weight: 1.0,
+		wall:   true,
 	},
 	{
 		// Open-Meteo drops visibility beyond the ICON-EU horizon, which is the tail of
 		// every forecast. Those hours are scored on everything else and flagged as
 		// estimates rather than being penalised for the gap.
+		//
+		// The heaviest factor in the table: it is the one that decides whether the ground
+		// is in sight, and the model's own visibility already carries the effect of rain
+		// and mist, so it is doing more work than its single number suggests.
 		name: "visibility",
 		unit: "km",
 		value: func(c conditions) (float64, bool) {
@@ -206,26 +240,29 @@ var vfrLimits = []factor{
 			return *c.visibilityKM, true
 		},
 		curve: []anchor{
-			{perfect, 40, 0},
-			{good, 20, 5},
-			{difficult, 15, 10},
-			{critical, 10, 20},
-			{noGo, 5, 0},
+			{perfect, 50},
+			{good, 30},
+			{difficult, 10},
+			{critical, 5},
 		},
+		weight: 1.3,
+		wall:   true,
 	},
 	{
-		// Total wind is deliberately gentler than crosswind: the two overlap, and a
-		// strong wind straight down the runway is not the problem a strong crosswind is.
+		// Total wind overlaps crosswind on every hour: a strong wind straight down the
+		// runway is not the problem a strong crosswind is, so its limits sit wider apart
+		// and the two are left to add rather than one being discounted.
 		name:  "wind",
 		unit:  "kn",
 		value: func(c conditions) (float64, bool) { return c.windSpeed, true },
 		curve: []anchor{
-			{perfect, 5, 0},
-			{good, 10, 5},
-			{difficult, 15, 10},
-			{critical, 20, 20},
-			{noGo, 30, 0},
+			{perfect, 5},
+			{good, 10},
+			{difficult, 20},
+			{critical, 30},
 		},
+		weight: 1.0,
+		wall:   true,
 	},
 	{
 		// Crosswind is against the best runway end -- crosswindComponent takes the
@@ -234,42 +271,51 @@ var vfrLimits = []factor{
 		unit:  "kn",
 		value: func(c conditions) (float64, bool) { return c.crosswind, true },
 		curve: []anchor{
-			{perfect, 5, 0},
-			{good, 8, 10},
-			{difficult, 10, 20},
-			{critical, 15, 40},
-			{noGo, 20, 0},
+			{perfect, 2},
+			{good, 5},
+			{difficult, 10},
+			{critical, 15},
 		},
+		weight: 1.0,
+		wall:   true,
 	},
 	{
 		// What costs points is the gust's margin over the steady crosswind, not its
 		// absolute value: 5 gusting 15 is harder to land in than a steady 15. A wide
 		// spread is a sign of heavy gusting in its own right, whatever the steady
-		// crosswind is doing, which is why this carries a no-go of its own.
+		// crosswind is doing, which is why this carries a wall of its own.
 		name:  "crosswind gust spread",
 		unit:  "kn",
 		value: func(c conditions) (float64, bool) { return c.crosswindGusts - c.crosswind, true },
 		curve: []anchor{
-			{perfect, 5, 0},
-			{good, 10, 5},
-			{difficult, 15, 10},
-			{critical, 20, 20},
-			{noGo, 30, 0},
+			{perfect, 2},
+			{good, 5},
+			{difficult, 10},
+			{critical, 15},
 		},
+		weight: 1.0,
+		wall:   true,
 	},
 	{
 		// The anchors are what the rain is worth if it falls; the scale then asks how
-		// likely that is. No no-go: the curve reaches a full 100 on its own, so certain
-		// heavy rain still ends the hour, by accumulation and with the breakdown saying so.
+		// likely that is. No wall, because a no-go multiplied by an unlikely forecast is
+		// not a decision worth shipping -- the cost stops rising instead.
+		//
+		// The limits are where this airfield's rain actually lives. Three years of ERA5 at
+		// EDWN: half of all wet hours are below 0.2mm/h, 1.0 is the 90th percentile
+		// (~280 h/year), and 4.0 is moderate-and-above (~20 h/year). The old table put its
+		// worst anchor at 20mm/h, which has never once occurred here, so every real rain
+		// hour scored as barely wet.
 		name:  "precipitation",
 		unit:  "mm/h",
 		value: func(c conditions) (float64, bool) { return c.precipitation, true },
 		curve: []anchor{
-			{perfect, 0, 0},
-			{good, 0.15, 10},
-			{difficult, 8, 40},
-			{critical, 20, 100},
+			{perfect, 0},
+			{good, 0.2},
+			{difficult, 1.0},
+			{critical, 4.0},
 		},
+		weight: 1.0,
 		scaledBy: &scale{
 			// Open-Meteo's precipitation_probability is the ensemble's P(>0.1mm in the
 			// hour), while the amount comes from the deterministic run -- so the two can
@@ -293,28 +339,36 @@ var vfrLimits = []factor{
 		},
 	},
 	{
-		// Density altitude on a short grass strip.
+		// Density altitude on a short grass strip. The wall is a formality at this
+		// latitude -- EDWN has not reached 38C in three years -- and is kept so the table
+		// has no factor that simply runs off the end.
 		name:  "temperature",
 		unit:  "C",
 		value: func(c conditions) (float64, bool) { return c.temperature, true },
 		curve: []anchor{
-			{perfect, 25, 0},
-			{good, 28, 1},
-			{difficult, 30, 10},
-			{critical, 35, 30},
-			{noGo, 40, 0},
+			{perfect, 25},
+			{good, 28},
+			{difficult, 32},
+			{critical, 38},
 		},
+		weight: 1.0,
+		wall:   true,
 	},
 	{
 		// Legal but not comfortable inside civil twilight; outside it, not legal at all.
+		//
+		// An ordinal, so it has one named band and a wall rather than four: there is no
+		// continuous scale between day and night to place limits on. Weight 0.5 puts
+		// twilight at 25 -- a real cost, but not the one a critical crosswind carries.
 		name:  "daylight",
 		unit:  "",
 		value: func(c conditions) (float64, bool) { return daylightOrdinal(c), true },
 		curve: []anchor{
-			{perfect, daylightDay, 0},
-			{critical, daylightTwilight, 30},
-			{noGo, daylightNight, 0},
+			{perfect, daylightDay},
+			{critical, daylightTwilight},
 		},
+		weight: 0.5,
+		wall:   true,
 	},
 }
 
@@ -340,9 +394,8 @@ func (f factor) worseHigher() bool {
 // reached a no-go.
 //
 // An anchor names the band that ends at it, so a value is called "difficult" from the
-// moment it leaves the good anchor until it reaches the difficult one. The exception is a
-// no-go anchor, which names a wall rather than a band: values on the last approach to it
-// keep the name of the band before it.
+// moment it leaves the good anchor until it reaches the difficult one. Past the last anchor
+// the hour is a no-go if the factor has a wall, and otherwise stays at the last band's cost.
 //
 // The cost is returned unrounded and unscaled: scoreVFR applies any scale and rounds once,
 // because rounding twice would stop the breakdown adding up to the score on screen.
@@ -353,23 +406,18 @@ func (f factor) evaluate(v float64) (cost float64, sev severity, isNoGo bool) {
 		sign = -1.0
 	}
 	at := func(i int) float64 { return sign * f.curve[i].at }
-	costAt := func(i int) float64 {
-		if f.curve[i].severity == noGo {
-			return noGoCost
-		}
-		return f.curve[i].cost
-	}
+	costAt := func(i int) float64 { return severityCost[f.curve[i].severity] * f.weight }
 	n := sign * v
 	last := len(f.curve) - 1
 
 	if n <= at(0) {
 		return 0, perfect, false
 	}
-	if n >= at(last) {
-		if f.curve[last].severity == noGo {
-			return noGoCost, noGo, true
+	if n > at(last) {
+		if f.wall {
+			return 0, noGo, true
 		}
-		// No no-go for this factor: the curve stops rising rather than extrapolating.
+		// No wall: the curve stops rising rather than extrapolating.
 		return costAt(last), f.curve[last].severity, false
 	}
 
@@ -381,11 +429,7 @@ func (f factor) evaluate(v float64) (cost float64, sev severity, isNoGo bool) {
 	frac := (n - at(i)) / (at(i+1) - at(i))
 	cost = costAt(i) + frac*(costAt(i+1)-costAt(i))
 
-	sev = f.curve[i+1].severity
-	if sev == noGo {
-		sev = f.curve[i].severity
-	}
-	return cost, sev, false
+	return cost, f.curve[i+1].severity, false
 }
 
 // scoreVFR scores one hour against vfrLimits.
@@ -418,7 +462,7 @@ func scoreVFR(c conditions) (probability int, penalties []VfrPenalty, visibility
 		raw, sev, isNoGo := f.evaluate(v)
 		if isNoGo {
 			slog.Debug("vfr no-go", "factor", f.name, "value", v, "unit", f.unit)
-			return 0, []VfrPenalty{{Factor: f.name, Value: v, Unit: f.unit, Severity: sev.String(), Cost: noGoCost}}, visibilityKnown
+			return 0, []VfrPenalty{{Factor: f.name, Value: v, Unit: f.unit, Severity: sev.String(), Cost: noGoPenaltyCost}}, visibilityKnown
 		}
 
 		// A scale never applies to a no-go -- validate() rejects a factor carrying both --
@@ -472,8 +516,8 @@ func (f factor) validate() error {
 	if f.curve[0].severity != perfect {
 		return fmt.Errorf("first anchor must be perfect, is %s", f.curve[0].severity)
 	}
-	if f.curve[0].cost != 0 {
-		return fmt.Errorf("the perfect anchor must cost nothing, costs %v", f.curve[0].cost)
+	if f.weight <= 0 {
+		return fmt.Errorf("weight must be positive, is %v", f.weight)
 	}
 
 	ascending := f.worseHigher()
@@ -483,8 +527,10 @@ func (f factor) validate() error {
 		if cur.severity <= prev.severity {
 			return fmt.Errorf("anchor %d (%s) does not come after %s", i, cur.severity, prev.severity)
 		}
-		if prev.severity == noGo {
-			return fmt.Errorf("anchor %d comes after a no-go, which must be last", i)
+		// noGo is not a band a value can land in: it is what `wall` says about the space
+		// past the last anchor, so it has no threshold of its own.
+		if cur.severity == noGo {
+			return fmt.Errorf("anchor %d is a no-go; set wall instead", i)
 		}
 		if ascending && cur.at <= prev.at {
 			return fmt.Errorf("threshold %v at anchor %d does not rise above %v", cur.at, i, prev.at)
@@ -492,34 +538,21 @@ func (f factor) validate() error {
 		if !ascending && cur.at >= prev.at {
 			return fmt.Errorf("threshold %v at anchor %d does not fall below %v", cur.at, i, prev.at)
 		}
-
-		if cur.severity == noGo {
-			if cur.cost != 0 {
-				return fmt.Errorf("the no-go anchor's cost is implicit, set it to 0 not %v", cur.cost)
-			}
-			if prev.cost >= noGoCost {
-				return fmt.Errorf("cost %v at anchor %d leaves no room to ramp into the no-go", prev.cost, i-1)
-			}
-			continue
-		}
-		if cur.cost <= prev.cost {
-			return fmt.Errorf("cost %v at anchor %d does not rise above %v", cur.cost, i, prev.cost)
-		}
 	}
 
-	return f.scaledBy.validate(f.curve[len(f.curve)-1].severity)
+	return f.scaledBy.validate(f.wall)
 }
 
-// validate checks a factor's scale. worst is the severity of the factor's last anchor:
-// scaling a no-go is refused rather than defined, because "does an unlikely deluge still
-// end the hour" is a real question and should be answered deliberately, in the open, and
-// not fall out of whichever multiplication happens to run first.
-func (s *scale) validate(worst severity) error {
+// validate checks a factor's scale. Scaling a factor that also carries a wall is refused
+// rather than defined, because "does an unlikely deluge still end the hour" is a real
+// question and should be answered deliberately, in the open, and not fall out of whichever
+// multiplication happens to run first.
+func (s *scale) validate(wall bool) error {
 	if s == nil {
 		return nil
 	}
-	if worst == noGo {
-		return fmt.Errorf("is scaled by %s and also carries a no-go; pick one", s.name)
+	if wall {
+		return fmt.Errorf("is scaled by %s and also carries a wall; pick one", s.name)
 	}
 	if len(s.points) < 2 {
 		return fmt.Errorf("scale %q needs at least two points, has %d", s.name, len(s.points))
