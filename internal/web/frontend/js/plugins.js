@@ -280,19 +280,22 @@ Chart.register({
                                 // green family entirely: dark green against green was a
                                 // distinction nobody could see at 24px on a white card.
                                 //
-                                // The yellow is a dark gold, not #ffff00 -- pure yellow on
-                                // a white background is close to unreadable, which is the
-                                // opposite of what a legibility fix should do.
+                                // Every hue is picked against white at that size, which is
+                                // the only ground that matters here. The hard pair is
+                                // orange against red rather than the yellow: leaning the
+                                // orange away from red is what keeps the bottom two bands
+                                // apart, and it is why the red is #dc2626 rather than the
+                                // CSS red it was.
                                 if (probability >= 90) {
                                     ctx.fillStyle = '#1d4ed8';
                                 } else if (probability >= 80) {
-                                    ctx.fillStyle = 'green';
+                                    ctx.fillStyle = '#15803d';
                                 } else if (probability >= 60) {
-                                    ctx.fillStyle = '#c9a227';
+                                    ctx.fillStyle = '#fab005';
                                 } else if (probability >= 40) {
-                                    ctx.fillStyle = 'orange';
+                                    ctx.fillStyle = '#f97316';
                                 } else {
-                                    ctx.fillStyle = 'red';
+                                    ctx.fillStyle = '#dc2626';
                                 }
                             }
 
