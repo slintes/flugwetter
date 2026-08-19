@@ -276,11 +276,20 @@ Chart.register({
                                 ctx.fillStyle = '#888';
                             } else {
                                 label = `${probability}`;
+                                // Five steps rather than four, and the top one leaves the
+                                // green family entirely: dark green against green was a
+                                // distinction nobody could see at 24px on a white card.
+                                //
+                                // The yellow is a dark gold, not #ffff00 -- pure yellow on
+                                // a white background is close to unreadable, which is the
+                                // opposite of what a legibility fix should do.
                                 if (probability >= 90) {
-                                    ctx.fillStyle = 'darkgreen';
-                                } else if (probability >= 60) {
+                                    ctx.fillStyle = '#1d4ed8';
+                                } else if (probability >= 80) {
                                     ctx.fillStyle = 'green';
-                                } else if (probability >= 30) {
+                                } else if (probability >= 60) {
+                                    ctx.fillStyle = '#c9a227';
+                                } else if (probability >= 40) {
                                     ctx.fillStyle = 'orange';
                                 } else {
                                     ctx.fillStyle = 'red';
