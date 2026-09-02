@@ -159,11 +159,10 @@ type conditions struct {
 	time     time.Time
 	daylight *SunriseSunsetResponse
 
-	cloudBaseFL    *int // flight levels, i.e. feet/100
-	windSpeed      float64
-	crosswind      float64
-	crosswindGusts float64
-	visibilityKM   *float64
+	cloudBaseFL  *int // flight levels, i.e. feet/100
+	windSpeed    float64
+	crosswind    float64
+	visibilityKM *float64
 
 	temperature              float64
 	precipitation            float64
@@ -249,22 +248,6 @@ var vfrLimits = []factor{
 		name:  "crosswind",
 		unit:  "kn",
 		value: func(c conditions) (float64, bool) { return c.crosswind, true },
-		curve: []anchor{
-			{perfect, 4},
-			{good, 8},
-			{difficult, 12},
-			{critical, 16},
-		},
-		wall: true,
-	},
-	{
-		// What matters is the gust's margin over the steady crosswind, not its absolute
-		// value: 5 gusting 15 is harder to land in than a steady 15. A wide spread is a
-		// sign of heavy gusting in its own right, whatever the steady crosswind is doing,
-		// which is why this carries a wall of its own.
-		name:  "crosswind gust spread",
-		unit:  "kn",
-		value: func(c conditions) (float64, bool) { return c.crosswindGusts - c.crosswind, true },
 		curve: []anchor{
 			{perfect, 4},
 			{good, 8},

@@ -651,3 +651,86 @@ func TestCrosswindComponent(t *testing.T) {
 		})
 	}
 }
+
+// gustWarning is judged on absolute readings, not the crosswind-style margin the rest of
+// the wind scoring uses, and each threshold is exclusive at its own boundary -- exactly at
+// the limit is not yet a warning, matching how vfrLimits treats a wall.
+func TestGustWarning(t *testing.T) {
+	tests := []struct {
+		name           string
+		windGusts      float64
+		crosswindGusts float64
+		want           bool
+	}{
+		{"calm", 0, 0, false},
+		{"exactly at the wind gust limit", 20, 0, false},
+		{"just past the wind gust limit", 20.1, 0, true},
+		{"exactly at the crosswind gust limit", 0, 10, false},
+		{"just past the crosswind gust limit", 0, 10.1, true},
+		{"both past their own limit", 25, 15, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := gustWarning(tc.windGusts, tc.crosswindGusts); got != tc.want {
+				t.Errorf("gustWarning(%v, %v) = %v, want %v", tc.windGusts, tc.crosswindGusts, got, tc.want)
+			}
+		})
+	}
+}
+
+// The warning has to reach the wire independent of the rating -- it is judged on absolute
+// gust readings, not the crosswind-margin factors that feed scoreVFR.
+func TestProcessWeatherData_GustWarningReachesTheWireFormat(t *testing.T) {
+	stubDayLight(t)
+
+	// Direction 145 is 90 degrees off testAirport's runway (see TestCrosswindComponent),
+	// so crosswindComponent returns the input speed unchanged -- crosswind gusts equal
+	// wind gusts exactly, which is what lets each case move one threshold at a time.
+	// Direction 55 is straight down the runway, where the crosswind component is 0.
+	times := []string{"calm", "wind gusts alone", "crosswind gusts alone", "both"}
+	fixture := hourlyFixture(times)
+	fixture.Hourly.Time = []string{
+		"2026-08-03T10:00", "2026-08-03T11:00", "2026-08-03T12:00", "2026-08-03T13:00",
+	}
+	fixture.Hourly.WindGusts10m = []float64{0, 25, 15, 25}
+	fixture.Hourly.WindDirection10m = []int{145, 55, 145, 145}
+
+	got := processWeatherData(context.Background(), fixture, testAirport)
+
+	if len(got.VfrData) != len(times) {
+		t.Fatalf("len(VfrData) = %d, want %d", len(got.VfrData), len(times))
+	}
+
+	tests := []struct {
+		i              int
+		wantWarning    bool
+		wantWindGusts  float64
+		wantCrossGusts float64
+	}{
+		{0, false, 0, 0},
+		{1, true, 25, 0},
+		{2, true, 15, 15},
+		{3, true, 25, 25},
+	}
+	for _, tc := range tests {
+		t.Run(times[tc.i], func(t *testing.T) {
+			got := got.VfrData[tc.i].GustWarning
+			if tc.wantWarning && got == nil {
+				t.Fatal("GustWarning = nil, want a warning")
+			}
+			if !tc.wantWarning {
+				if got != nil {
+					t.Errorf("GustWarning = %+v, want nil", *got)
+				}
+				return
+			}
+			if got.WindGusts != tc.wantWindGusts {
+				t.Errorf("WindGusts = %v, want %v", got.WindGusts, tc.wantWindGusts)
+			}
+			if got.CrosswindGusts != tc.wantCrossGusts {
+				t.Errorf("CrosswindGusts = %v, want %v", got.CrosswindGusts, tc.wantCrossGusts)
+			}
+		})
+	}
+}

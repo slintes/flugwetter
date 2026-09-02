@@ -289,12 +289,12 @@ func TestScoreVFR_TheLastLimitScoresRatherThanEndsTheHour(t *testing.T) {
 	}{
 		{
 			name: "exactly at the crosswind limit",
-			with: func(c conditions) conditions { c.crosswind, c.crosswindGusts = 16, 16; return c },
+			with: func(c conditions) conditions { c.crosswind = 16; return c },
 			want: critical,
 		},
 		{
 			name: "just past the crosswind limit",
-			with: func(c conditions) conditions { c.crosswind, c.crosswindGusts = 16.1, 16.1; return c },
+			with: func(c conditions) conditions { c.crosswind = 16.1; return c },
 			want: noGo, wantWhy: "crosswind",
 		},
 		{
@@ -365,23 +365,9 @@ func TestScoreVFR_Calibration(t *testing.T) {
 			// total wind, but critical as a crosswind, because it is the one that decides
 			// whether you land.
 			name:       "14kn of crosswind is critical",
-			with:       func(c conditions) conditions { c.crosswind, c.crosswindGusts = 14, 14; return c },
+			with:       func(c conditions) conditions { c.crosswind = 14; return c },
 			want:       critical,
 			wantFactor: "crosswind",
-		},
-		{
-			name:       "a 14kn gust spread is critical",
-			with:       func(c conditions) conditions { c.crosswind, c.crosswindGusts = 2, 16; return c },
-			want:       critical,
-			wantFactor: "crosswind gust spread",
-		},
-		{
-			// The hour that started all of this: 3.02kn steady crosswind gusting 7.27kn.
-			// The stepped ladder this replaced charged a flat 5 points for that 4.25kn
-			// spread and scored an otherwise perfect afternoon at 95.
-			name: "the gust spread that started this is good, not a cliff",
-			with: func(c conditions) conditions { c.crosswind, c.crosswindGusts = 3.02, 7.27; return c },
-			want: good,
 		},
 		{
 			// Precipitation is one factor: what would fall, discounted by how likely it is
@@ -428,10 +414,10 @@ func TestScoreVFR_Calibration(t *testing.T) {
 			// visibility alone reaches critical, and that is what the hour rates.
 			name: "a multi-factor hour rates its single worst factor, not an accumulation",
 			with: func(c conditions) conditions {
-				c.cloudBaseFL = ptrInt(25)           // good
-				c.windSpeed = 10                     // good
-				c.crosswind, c.crosswindGusts = 5, 5 // good, gust spread stays perfect
-				c.visibilityKM = ptrFloat(5)         // critical
+				c.cloudBaseFL = ptrInt(25)   // good
+				c.windSpeed = 10             // good
+				c.crosswind = 5              // good
+				c.visibilityKM = ptrFloat(5) // critical
 				return c
 			},
 			want:       critical,
@@ -483,15 +469,8 @@ func TestScoreVFR_NoGos(t *testing.T) {
 		},
 		{
 			name:   "crosswind past the limit",
-			with:   func(c conditions) conditions { c.crosswind, c.crosswindGusts = 20, 20; return c },
+			with:   func(c conditions) conditions { c.crosswind = 20; return c },
 			factor: "crosswind",
-		},
-		{
-			// A wide spread off a light steady crosswind: the crosswind factor sees
-			// nothing, and this one carries the hour on its own.
-			name:   "a gust spread past the limit",
-			with:   func(c conditions) conditions { c.crosswind, c.crosswindGusts = 2, 32; return c },
-			factor: "crosswind gust spread",
 		},
 		{
 			name:   "heat past the limit",
@@ -535,9 +514,9 @@ func TestScoreVFR_NoGos(t *testing.T) {
 // would report instead.
 func TestScoreVFR_TwoFactorsPastTheirWallAreBothReported(t *testing.T) {
 	c := scoringConditions(t)
-	c.windSpeed = 32                     // past the wind wall
-	c.crosswind, c.crosswindGusts = 2, 2 // clear
-	c.temperature = 41                   // past the temperature wall
+	c.windSpeed = 32   // past the wind wall
+	c.crosswind = 2    // clear
+	c.temperature = 41 // past the temperature wall
 
 	rating, _, factors, _ := scoreVFR(c)
 
@@ -627,9 +606,9 @@ func TestScoreVFR_NoDaylightWindow(t *testing.T) {
 // not only the worst one.
 func TestScoreVFR_BreakdownExplainsTheRating(t *testing.T) {
 	c := scoringConditions(t)
-	c.crosswind, c.crosswindGusts = 14, 14 // critical
-	c.windSpeed = 12                       // difficult
-	c.temperature = 26                     // good
+	c.crosswind = 14   // critical
+	c.windSpeed = 12   // difficult
+	c.temperature = 26 // good
 
 	rating, _, factors, _ := scoreVFR(c)
 

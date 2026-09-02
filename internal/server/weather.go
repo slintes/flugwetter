@@ -456,6 +456,22 @@ func isNextDay(a, b string) bool {
 }
 
 // processWeatherData converts API response to frontend-friendly format
+// Gust thresholds that flag an hour for a second look without affecting its rating.
+// Deliberately outside vfrLimits: gusts are the least reliable number in the forecast --
+// the model can say "gusting to 30" and the airfield sees almost none of it, or the
+// reverse -- so this is a nudge to check, not a scored severity.
+const (
+	windGustWarningKn      = 20
+	crosswindGustWarningKn = 10
+)
+
+// gustWarning reports whether an hour's raw gust readings are worth a second look, judged
+// on their own absolute value rather than their margin over the steady wind -- see the
+// package doc comment on vfrLimits for why that margin is no longer scored at all.
+func gustWarning(windGusts, crosswindGusts float64) bool {
+	return windGusts > windGustWarningKn || crosswindGusts > crosswindGustWarningKn
+}
+
 func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, airport Airport) *ProcessedWeatherData {
 	// The runs are stamped here rather than at serve time because they describe *this*
 	// data: they are the provenance of the payload, and a cached entry must keep the runs
@@ -565,7 +581,6 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 				cloudBaseFL:              cloudBase,
 				windSpeed:                windSpeed10m,
 				crosswind:                crosswind10m,
-				crosswindGusts:           crosswindGusts10m,
 				visibilityKM:             visibility,
 				temperature:              tempPoint.Temperature,
 				precipitation:            tempPoint.Precipitation,
@@ -578,6 +593,15 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 		vfrRatingStr := ""
 		if known {
 			vfrRatingStr = vfrRating.String()
+		}
+
+		// gustWarn is independent of the rating above -- see gustWarning's doc comment.
+		var gustWarn *VfrGustWarning
+		if gustWarning(windGusts10m, crosswindGusts10m) {
+			gustWarn = &VfrGustWarning{
+				WindGusts:      windGusts10m,
+				CrosswindGusts: crosswindGusts10m,
+			}
 		}
 
 		// Get weather code if available
@@ -600,6 +624,7 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 			WeatherCode:     processWeatherCode,
 			VisibilityKnown: visibilityKnown,
 			Factors:         vfrFactors,
+			GustWarning:     gustWarn,
 		})
 
 	}

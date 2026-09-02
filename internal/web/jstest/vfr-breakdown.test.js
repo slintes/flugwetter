@@ -18,10 +18,10 @@ test('an unscored hour is not reported as a clear one', () => {
 test('a factor names itself, its value and its severity', () => {
     const lines = formatBreakdown({
         rating: 'good',
-        factors: [{ factor: 'crosswind gust spread', value: 4.244104822, unit: 'kn', severity: 'good' }],
+        factors: [{ factor: 'crosswind', value: 4.244104822, unit: 'kn', severity: 'good' }],
     });
 
-    assert.deepEqual(lines, ['crosswind gust spread 4.2 kn — good']);
+    assert.deepEqual(lines, ['crosswind 4.2 kn — good']);
 });
 
 test('factors are listed in the order the backend sent them', () => {
@@ -100,4 +100,35 @@ test('a factor without a unit shows no value', () => {
     });
 
     assert.deepEqual(lines, ['daylight — no-go']);
+});
+
+// gustWarning is judged on absolute gust readings, not anything in factors -- see
+// gustWarning in internal/server/weather.go -- so it can appear on a clear hour, and its
+// line is appended after the rating's own lines rather than replacing them.
+test('a gust warning on an otherwise clear hour is appended, not swapped in', () => {
+    const lines = formatBreakdown({
+        rating: 'perfect',
+        gustWarning: { windGusts: 24, crosswindGusts: 6 },
+    });
+
+    assert.deepEqual(lines, ['nothing against it', 'gusts 24 kn, crosswind gusts 6 kn — check before you fly']);
+});
+
+test('a gust warning is appended after the factor breakdown', () => {
+    const lines = formatBreakdown({
+        rating: 'difficult',
+        factors: [{ factor: 'cloud base', value: 22, unit: 'FL', severity: 'difficult' }],
+        gustWarning: { windGusts: 12.6, crosswindGusts: 11.04 },
+    });
+
+    assert.deepEqual(lines, [
+        'cloud base 22 FL — difficult',
+        'gusts 12.6 kn, crosswind gusts 11 kn — check before you fly',
+    ]);
+});
+
+test('no gust warning adds nothing', () => {
+    const lines = formatBreakdown({ rating: 'good', factors: [{ factor: 'wind', value: 8, unit: 'kn', severity: 'good' }] });
+
+    assert.deepEqual(lines, ['wind 8 kn — good']);
 });

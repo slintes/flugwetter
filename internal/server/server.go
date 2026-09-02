@@ -149,11 +149,15 @@ type VfrPoint struct {
 	// when that band is no-go -- two factors can be past their wall in the same hour, and
 	// both are the reason.
 	Factors []VfrFactor `json:"factors,omitempty"`
+	// GustWarning flags an hour whose raw gust reading is worth a second look, independent
+	// of Rating -- see gustWarning in weather.go for the thresholds. Nil when neither
+	// reading crossed its own line.
+	GustWarning *VfrGustWarning `json:"gust_warning,omitempty"`
 }
 
 // VfrFactor is one factor's contribution to an hour's rating, as scored against vfrLimits.
 type VfrFactor struct {
-	Factor   string  `json:"factor"`   // "crosswind gust spread"
+	Factor   string  `json:"factor"`   // "crosswind"
 	Value    float64 `json:"value"`    // 7.27
 	Unit     string  `json:"unit"`     // "kn"
 	Severity string  `json:"severity"` // "good" | "difficult" | "critical" | "no-go"
@@ -169,6 +173,13 @@ type VfrScale struct {
 	Name  string  `json:"name"`  // "probability"
 	Value float64 `json:"value"` // 88
 	Unit  string  `json:"unit"`  // "%"
+}
+
+// VfrGustWarning carries the raw readings that tripped the gust warning -- not scored, but
+// worth naming in the tooltip.
+type VfrGustWarning struct {
+	WindGusts      float64 `json:"wind_gusts"`
+	CrosswindGusts float64 `json:"crosswind_gusts"`
 }
 
 // responseWriter is a custom ResponseWriter that captures the status code

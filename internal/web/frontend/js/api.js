@@ -317,7 +317,13 @@ export function updateCharts(data) {
                 rating: timePoint.rating, // "" => not scored at all
                 weatherCode: timePoint.weather_code, // Include weather code for icon display
                 visibilityKnown: timePoint.visibility_known, // false => rating is an estimate
-                factors: timePoint.factors // every factor worse than perfect, worst first
+                factors: timePoint.factors, // every factor worse than perfect, worst first
+                // Absolute gust readings, independent of the rating -- see gustWarning in
+                // internal/server/weather.go. null when neither reading crossed its line.
+                gustWarning: timePoint.gust_warning ? {
+                    windGusts: timePoint.gust_warning.wind_gusts,
+                    crosswindGusts: timePoint.gust_warning.crosswind_gusts
+                } : null
             })
         })
     }

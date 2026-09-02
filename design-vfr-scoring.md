@@ -92,6 +92,9 @@ Both the steady crosswind and the gust spread carry their own limit. The spread'
 proxy for the peak — a wide spread means heavy gusting whatever the steady value is, and
 that is worth calling off a flight for on its own.
 
+**Revised by D10.** The gust spread's limit is gone; gusts no longer carry a wall or any
+other entry in the table.
+
 ### D5 — An anchor names the band that ends at it
 
 A value is "difficult" from the moment it leaves the good anchor until it reaches the
@@ -198,6 +201,27 @@ possible 50) to `difficult` outright. Without a weight to fake a smaller number,
 way to keep twilight from reading as bad as a critical crosswind is to give it the softer
 band by name.
 
+### D10 — Gusts leave the table; a separate warning replaces them
+
+**Revises D4.** The hour that prompted this whole design — 3.02 kn steady crosswind gusting
+7.27 kn, marked down for a 4.24 kn spread — was fixed by D2's curve, not solved: a gust
+margin is still not something a good ceiling and clear visibility should be judged against
+on the same scale as a critical crosswind. It measures something real (heavy gusting), but
+whether it is worth grounding an otherwise-good hour over is a judgement call the pilot
+should make with the actual numbers in front of them, not one the rating should make for
+them by folding it into a severity.
+
+So "crosswind gust spread" is gone from `vfrLimits` entirely — not retuned, removed — and
+replaced with `gustWarning` in `internal/server/weather.go`: a plain boolean, judged on the
+raw readings rather than a margin, wind gusts over 20 kn or crosswind gusts over 10 kn,
+either one. It does not touch `conditions`, `scoreVFR`, or the rating in any way; it is
+computed alongside scoring, not as part of it, and reaches the frontend as
+`VfrPoint.GustWarning`, drawn as a small mark on the rating badge rather than a letter or a
+color. An hour can be a perfect rating and still carry the mark.
+
+The curves-not-steps shape D2 introduced is unaffected — this removes a factor, not the
+mechanism that scores the rest of them.
+
 ## Calibration
 
 **The numbers live in `vfrLimits` and nowhere else.** They are personal minima and get
@@ -210,8 +234,6 @@ What the shape is meant to express, and what should survive a retune:
   a strong wind straight down the runway is not the problem a strong crosswind is -- so wind
   reaches each band later, not "for less", since there is no longer a "less" to weigh it
   against.
-- Gusts are judged on their margin over the steady crosswind, not their absolute value:
-  5 gusting 15 is harder to land in than a steady 15.
 - Precipitation is judged on what would fall, times how likely it is to fall. A 90% chance
   of a tenth of a millimetre is not a reason to stay on the ground; a 90% chance of a
   downpour is.

@@ -17,12 +17,17 @@ All four share one time axis and pan and zoom together.
 | **Wind** | Wind barbs by altitude, plus 10m speed, gusts and the crosswind component. |
 | **Temperature** | Temperature, dew point, and precipitation with probability-scaled bars. |
 
-Each factor — cloud base, visibility, total wind, crosswind and its gust spread,
-precipitation, heat and daylight — is judged on its own curve: perfect, good, difficult,
-critical, or past a hard limit into no-go. The hour's rating is simply the worst band any
-single factor reaches, a weakest-link read rather than a sum, so one critical crosswind
-rates exactly as badly as it would alongside three merely-good factors. An unscored hour
-(no daylight window resolved) is rendered as "no data", not as bad weather.
+Each factor — cloud base, visibility, total wind, crosswind, precipitation, heat and
+daylight — is judged on its own curve: perfect, good, difficult, critical, or past a hard
+limit into no-go. The hour's rating is simply the worst band any single factor reaches, a
+weakest-link read rather than a sum, so one critical crosswind rates exactly as badly as it
+would alongside three merely-good factors. An unscored hour (no daylight window resolved)
+is rendered as "no data", not as bad weather.
+
+A gust reading well past what the rest of the hour is doing — wind gusts or crosswind gusts
+alone, judged on their own absolute value — does not affect the rating at all, but earns a
+small warning mark on the badge: a nudge to check, not a reason to fail an otherwise good
+hour.
 
 Every limit lives in one table, `vfrLimits` in `internal/server/vfr.go`. Hovering an hour on
 the VFR chart lists every factor that is not perfect, worst first, and what it rated.

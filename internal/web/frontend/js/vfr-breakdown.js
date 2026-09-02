@@ -15,11 +15,15 @@ export function formatBreakdown(point) {
     }
 
     const factors = point.factors || [];
-    if (factors.length === 0) {
-        return ['nothing against it'];
+    const lines = factors.length === 0 ? ['nothing against it'] : factors.map(formatFactor);
+
+    // Independent of the rating above -- see gustWarning in internal/server/weather.go --
+    // so it is appended after the rating's own lines are decided, not instead of them.
+    if (point.gustWarning) {
+        lines.push(formatGustWarning(point.gustWarning));
     }
 
-    return factors.map(formatFactor);
+    return lines;
 }
 
 // formatFactor renders one factor: what it was, and how it rated.
@@ -35,6 +39,12 @@ function formatFactor(factor) {
     const head = parts.filter(Boolean).join(' ');
 
     return `${head} — ${factor.severity}`;
+}
+
+// formatGustWarning names the raw reading(s) that tripped the warning, not just that one
+// did -- "check before you fly" alone gives nothing to weigh the warning against.
+function formatGustWarning(warning) {
+    return `gusts ${formatValue(warning.windGusts, 'kn')}, crosswind gusts ${formatValue(warning.crosswindGusts, 'kn')} — check before you fly`;
 }
 
 // Values arrive at full model precision (7.265331983420373 kn). One decimal is as much as

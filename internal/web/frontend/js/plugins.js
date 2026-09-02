@@ -331,6 +331,27 @@ function drawBadge(ctx, x, y, badge, fill, text, letter) {
     fillTextCentered(ctx, letter, x, y, font, text);
 }
 
+// drawGustWarningMark paints a small dot in the badge's top-right corner, independent of
+// and on top of the rating it sits on -- gustWarning (internal/server/weather.go) is judged
+// on the raw gust readings alone, not anything scoreVFR reaches. Sized off the badge like
+// the letter is, rather than a fixed pixel value, so it scales with the narrow/wide
+// viewport metrics the same way the badge itself does.
+function drawGustWarningMark(ctx, x, y, badge) {
+    const r = badge.height * 0.2;
+    const cx = x + badge.width / 2 - r * 0.9;
+    const cy = y - badge.height / 2 + r * 0.9;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#f59e0b';
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, r * 0.3);
+    ctx.strokeStyle = '#7c2d12';
+    ctx.stroke();
+    ctx.restore();
+}
+
 // Custom plugin to draw the VFR rating badge and weather icon for each hour
 Chart.register({
     id: 'vfrText',
@@ -399,6 +420,9 @@ Chart.register({
                                 } else {
                                     drawBadge(ctx, xPos, yPos, metrics.badge,
                                         style.fill, style.text, style.letter);
+                                }
+                                if (point.gustWarning) {
+                                    drawGustWarningMark(ctx, xPos, yPos, metrics.badge);
                                 }
                             }
                             
