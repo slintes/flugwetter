@@ -278,8 +278,8 @@ func TestFactorEvaluate_ClampsBeyondTheLastAnchor(t *testing.T) {
 }
 
 // The fourth limit is the wall, so the boundary itself is the worst *scoring* value rather
-// than the first no-go. Without this the table has two readings -- "critical at 15kn" and
-// "no-go at 15kn" -- and no reason to expect a future retune to keep them apart.
+// than the first no-go. Without this the table has two readings -- "critical at 16kn" and
+// "no-go at 16kn" -- and no reason to expect a future retune to keep them apart.
 func TestScoreVFR_TheLastLimitScoresRatherThanEndsTheHour(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -289,12 +289,12 @@ func TestScoreVFR_TheLastLimitScoresRatherThanEndsTheHour(t *testing.T) {
 	}{
 		{
 			name: "exactly at the crosswind limit",
-			with: func(c conditions) conditions { c.crosswind, c.crosswindGusts = 15, 15; return c },
+			with: func(c conditions) conditions { c.crosswind, c.crosswindGusts = 16, 16; return c },
 			want: critical,
 		},
 		{
 			name: "just past the crosswind limit",
-			with: func(c conditions) conditions { c.crosswind, c.crosswindGusts = 15.1, 15.1; return c },
+			with: func(c conditions) conditions { c.crosswind, c.crosswindGusts = 16.1, 16.1; return c },
 			want: noGo, wantWhy: "crosswind",
 		},
 		{
@@ -361,17 +361,17 @@ func TestScoreVFR_Calibration(t *testing.T) {
 			wantFactor: "wind",
 		},
 		{
-			// The two wind factors overlap on every hour: a 12kn crosswind is worse than
-			// the same 12kn as total wind, because it is the one that decides whether you
-			// land.
-			name:       "12kn of crosswind is critical",
-			with:       func(c conditions) conditions { c.crosswind, c.crosswindGusts = 12, 12; return c },
+			// The two wind factors overlap on every hour: 14kn is merely difficult as
+			// total wind, but critical as a crosswind, because it is the one that decides
+			// whether you land.
+			name:       "14kn of crosswind is critical",
+			with:       func(c conditions) conditions { c.crosswind, c.crosswindGusts = 14, 14; return c },
 			want:       critical,
 			wantFactor: "crosswind",
 		},
 		{
-			name:       "a 12kn gust spread is critical",
-			with:       func(c conditions) conditions { c.crosswind, c.crosswindGusts = 2, 14; return c },
+			name:       "a 14kn gust spread is critical",
+			with:       func(c conditions) conditions { c.crosswind, c.crosswindGusts = 2, 16; return c },
 			want:       critical,
 			wantFactor: "crosswind gust spread",
 		},
@@ -495,7 +495,7 @@ func TestScoreVFR_NoGos(t *testing.T) {
 		},
 		{
 			name:   "heat past the limit",
-			with:   func(c conditions) conditions { c.temperature = 40; return c },
+			with:   func(c conditions) conditions { c.temperature = 41; return c },
 			factor: "temperature",
 		},
 		{
@@ -537,7 +537,7 @@ func TestScoreVFR_TwoFactorsPastTheirWallAreBothReported(t *testing.T) {
 	c := scoringConditions(t)
 	c.windSpeed = 32                     // past the wind wall
 	c.crosswind, c.crosswindGusts = 2, 2 // clear
-	c.temperature = 40                   // past the temperature wall
+	c.temperature = 41                   // past the temperature wall
 
 	rating, _, factors, _ := scoreVFR(c)
 
@@ -627,7 +627,7 @@ func TestScoreVFR_NoDaylightWindow(t *testing.T) {
 // not only the worst one.
 func TestScoreVFR_BreakdownExplainsTheRating(t *testing.T) {
 	c := scoringConditions(t)
-	c.crosswind, c.crosswindGusts = 12, 12 // critical
+	c.crosswind, c.crosswindGusts = 14, 14 // critical
 	c.windSpeed = 12                       // difficult
 	c.temperature = 26                     // good
 

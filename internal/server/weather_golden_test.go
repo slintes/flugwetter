@@ -189,12 +189,12 @@ func TestGoldenFixture_ProcessesToKnownValues(t *testing.T) {
 
 	t.Run("vfr rating and night suffix", func(t *testing.T) {
 		// Midday, CAVOK-ish: no ceiling, 42.78 km visibility, no precipitation, 5.3 kn of
-		// wind. Five factors are not perfect -- wind, visibility and the 4.54 kn crosswind
-		// are all merely good, while the 6.94 kn gust spread (11.49 kn gusting against that
-		// 4.54 kn steady crosswind) and a 31.9 C afternoon are both difficult, which is what
-		// the hour rates. The exact breakdown comes from vfrLimits and moves when the table
-		// is retuned; what this pins is that the whole path from fixture to rating still
-		// works.
+		// wind. The 42.78 km visibility is above the perfect threshold, so it drops out of
+		// the breakdown; wind, the 4.54 kn crosswind and its 6.94 kn gust spread (11.49 kn
+		// gusting against that steady crosswind) are all merely good, and a 31.9 C
+		// afternoon alone is difficult, which is what the hour rates. The exact breakdown
+		// comes from vfrLimits and moves when the table is retuned; what this pins is that
+		// the whole path from fixture to rating still works.
 		midday := got.VfrData[12]
 		if midday.Time != "2026-08-04T12:00" {
 			t.Fatalf("Time = %q, want 2026-08-04T12:00", midday.Time)
@@ -208,10 +208,10 @@ func TestGoldenFixture_ProcessesToKnownValues(t *testing.T) {
 		if midday.WeatherCode != "0" {
 			t.Errorf("WeatherCode = %q, want \"0\" with no suffix at midday", midday.WeatherCode)
 		}
-		if len(midday.Factors) != 5 {
+		if len(midday.Factors) != 4 {
 			t.Fatalf("Factors = %+v, want one per factor that is not perfect", midday.Factors)
 		}
-		if got := midday.Factors[0]; got.Factor != "crosswind gust spread" || got.Severity != difficult.String() {
+		if got := midday.Factors[0]; got.Factor != "temperature" || got.Severity != difficult.String() {
 			t.Errorf("Factors[0] = %+v, want the dominant factor first", got)
 		}
 
