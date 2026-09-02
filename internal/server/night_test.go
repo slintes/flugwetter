@@ -179,8 +179,8 @@ func TestForecastWindow_SkipsUnparseableTimes(t *testing.T) {
 }
 
 // The assertion that keeps the band and the score from drifting apart: they are both
-// derived from civil twilight, so every hour the score zeroes for daylight must fall inside
-// a night band, and no hour that scores above zero may.
+// derived from civil twilight, so every hour the daylight factor rates no-go must fall
+// inside a night band, and no hour outside one may.
 func TestProcessWeatherData_NightBandsAgreeWithTheScore(t *testing.T) {
 	stubDayLight(t)
 
@@ -208,18 +208,19 @@ func TestProcessWeatherData_NightBandsAgreeWithTheScore(t *testing.T) {
 			t.Fatalf("unparseable time in output: %q", point.Time)
 		}
 
+		// Every factor is evaluated regardless of whether an earlier one already reached
+		// no-go, so the daylight factor's own verdict is a direct, unconditional signal
+		// now -- no need to guard against some other factor's no-go masking it.
 		night := false
-		for _, penalty := range point.Penalties {
-			if penalty.Factor == "daylight" && penalty.Severity == noGo.String() {
+		for _, factor := range point.Factors {
+			if factor.Factor == "daylight" && factor.Severity == noGo.String() {
 				night = true
 			}
 		}
 
-		if night && !inNight(ts) {
-			t.Errorf("%s scores 0 for daylight but is not inside a night band", point.Time)
-		}
-		if !night && point.Probability > 0 && inNight(ts) {
-			t.Errorf("%s scores %d but is inside a night band", point.Time, point.Probability)
+		if night != inNight(ts) {
+			t.Errorf("%s: daylight factor no-go = %v, inside a night band = %v -- these must agree",
+				point.Time, night, inNight(ts))
 		}
 	}
 }

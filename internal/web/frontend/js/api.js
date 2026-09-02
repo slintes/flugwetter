@@ -308,13 +308,16 @@ export function updateCharts(data) {
         data.vfr_data.forEach(timePoint => {
             const timeValue = toEpochMs(timePoint.time);
 
+            // y is unused for vertical placement -- the vfrText plugin draws every badge
+            // at a fixed row -- but Chart.js still wants a numeric y to lay the dataset
+            // out, so 0/1 stands in for "not scored"/"scored" the same way it always has.
             vfrData.push({
                 x: timeValue,
-                y: timePoint.probability / 100, // Convert to 0-1 range for chart
-                probability: timePoint.probability, // Keep original percentage for display
+                y: timePoint.rating ? 1 : 0,
+                rating: timePoint.rating, // "" => not scored at all
                 weatherCode: timePoint.weather_code, // Include weather code for icon display
-                visibilityKnown: timePoint.visibility_known, // false => score is an estimate
-                penalties: timePoint.penalties // what the score lost, worst first; absent when nothing did
+                visibilityKnown: timePoint.visibility_known, // false => rating is an estimate
+                factors: timePoint.factors // every factor worse than perfect, worst first
             })
         })
     }

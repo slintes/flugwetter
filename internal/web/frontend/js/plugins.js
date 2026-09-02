@@ -229,7 +229,109 @@ Chart.register({
     }
 });
 
-// Custom plugin to draw vfr text with color coding and weather icons
+// The five ratings the badge can show, worst last -- same five colors already tuned for
+// legibility on the white chart card, just keyed by severity string instead of a numeric
+// threshold. Dark text on the yellow `difficult` badge for contrast; white everywhere else.
+//
+// Letters follow GAFOR area-forecast usage (open/marginal/closed), extended to the two
+// extra bands this table has: C(AVOK) above open, D(ifficult) between open and marginal.
+const RATING_STYLE = {
+    perfect:    { letter: 'C', fill: '#1d4ed8', text: '#ffffff' },
+    good:       { letter: 'O', fill: '#15803d', text: '#ffffff' },
+    difficult:  { letter: 'D', fill: '#fab005', text: '#1f2937' },
+    critical:   { letter: 'M', fill: '#f97316', text: '#ffffff' },
+    'no-go':    { letter: 'X', fill: '#dc2626', text: '#ffffff' },
+};
+// An hour whose visibility the model dropped (typically the forecast tail) still gets a
+// rating, but it should not look as confident as one that is -- so it is drawn in this
+// neutral grey instead of its severity color, same letter, same size.
+const ESTIMATE_FILL = '#9ca3af';
+const ESTIMATE_TEXT = '#ffffff';
+
+// shadeColor darkens (negative amt) or lightens (positive) a "#rrggbb" color, for the
+// badge's edge -- a stroke a shade darker than its own fill, rather than a fixed grey that
+// would read as mismatched against five different hues.
+function shadeColor(hex, amt) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
+    const target = amt < 0 ? 0 : 255;
+    const p = Math.abs(amt);
+    const mix = (c) => Math.round((target - c) * p + c);
+    return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+}
+
+// fillTextCentered draws one glyph centered exactly on (x, y), by its own ink rather than
+// by the font's nominal em box. `textBaseline: 'middle'` centers on the ascent-to-descent
+// box the font declares for itself, which reserves room for descenders (g, y, p) that an
+// all-caps single letter never uses -- that reserved space is what pushed every badge's
+// letter visibly toward the bottom, and by an amount that depends on exactly which font a
+// browser substituted for "Narrow", which is why it looked fine in one browser and off in
+// another. Measuring the glyph's actual ink and centering on that is exact regardless.
+function fillTextCentered(ctx, letter, x, y, font, color) {
+    ctx.fillStyle = color;
+    ctx.font = font;
+    ctx.textAlign = 'center';
+
+    const m = ctx.measureText(letter);
+    const hasInkMetrics = ['actualBoundingBoxAscent', 'actualBoundingBoxDescent',
+        'actualBoundingBoxLeft', 'actualBoundingBoxRight'].every(k => typeof m[k] === 'number');
+
+    if (!hasInkMetrics) {
+        // Old engine with no ink metrics: fall back to the nominal-box centering rather
+        // than not drawing at all.
+        ctx.textBaseline = 'middle';
+        ctx.fillText(letter, x, y);
+        return;
+    }
+
+    ctx.textBaseline = 'alphabetic';
+    const dx = (m.actualBoundingBoxLeft - m.actualBoundingBoxRight) / 2;
+    const dy = (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+    ctx.fillText(letter, x + dx, y + dy);
+}
+
+// drawBadge paints one fixed-size pill with a centered letter: a soft shadow to lift it off
+// the white card, and an edge a shade darker than the fill so it reads as a distinct object
+// rather than a flat patch of color. Fixed size regardless of the letter is what keeps every
+// hour's column the same width -- see the comment on VFR_METRICS in viewport.js.
+//
+// The letter's size is a fraction of the badge's own height, not the font size passed in
+// for anything else on this chart -- badges are much smaller than the percentages they
+// replaced, and reusing that larger size left almost no margin around the glyph. The ratio
+// is deliberately conservative: font fallback for the "Narrow" family differs enough across
+// browsers that a tighter ratio looked fine in one and cramped in another.
+function drawBadge(ctx, x, y, badge, fill, text, letter) {
+    const radius = badge.height / 2;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(15, 23, 42, 0.28)';
+    ctx.shadowBlur = badge.height * 0.26;
+    ctx.shadowOffsetY = badge.height * 0.09;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+        ctx.roundRect(x - badge.width / 2, y - badge.height / 2, badge.width, badge.height, radius);
+    } else {
+        ctx.rect(x - badge.width / 2, y - badge.height / 2, badge.width, badge.height);
+    }
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.restore();
+
+    ctx.lineWidth = Math.max(1, badge.height * 0.06);
+    ctx.strokeStyle = shadeColor(fill, -0.22);
+    ctx.beginPath();
+    if (ctx.roundRect) {
+        ctx.roundRect(x - badge.width / 2, y - badge.height / 2, badge.width, badge.height, radius);
+    } else {
+        ctx.rect(x - badge.width / 2, y - badge.height / 2, badge.width, badge.height);
+    }
+    ctx.stroke();
+
+    const font = `bold ${Math.round(badge.height * 0.55)}px Narrow, Arial, sans-serif`;
+    fillTextCentered(ctx, letter, x, y, font, text);
+}
+
+// Custom plugin to draw the VFR rating badge and weather icon for each hour
 Chart.register({
     id: 'vfrText',
     afterDatasetsDraw: function(chart) {
@@ -246,10 +348,20 @@ Chart.register({
             ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
             ctx.clip();
             
+            // Badges are opaque rectangles painted left to right, so two drawn closer
+            // together than one badge-width apart do not just look crowded the way the
+            // percentages this replaced did -- the later one's fill paints over part of
+            // the earlier one's letter. previousBadgeRight tracks where the last badge
+            // ended, and a badge that would start before that is skipped rather than
+            // corrupting its neighbour. This only bites when a preset zoom (the 6h/12h/...
+            // buttons) packs more hours in than the plot can actually fit; the computed
+            // initial zoom already keeps clear of it.
+            let previousBadgeRight = -Infinity;
+
             chart.data.datasets.forEach((dataset, datasetIndex) => {
                 if (dataset.label === 'VFR Probability') {
                     dataset.data.forEach((point, index) => {
-                        if (point && point.probability !== undefined) {
+                        if (point && point.rating !== undefined) {
                             
                             const xPos = chart.scales.x.getPixelForValue(point.x);
                             const yPos = chartArea.top + (chartArea.bottom - chartArea.top) * 0.65;
@@ -258,54 +370,37 @@ Chart.register({
                             if (xPos < chartArea.left || xPos > chartArea.right) {
                                 return;
                             }
-                            
-                            const probability = point.probability;
+
+                            const badgeHalfWidth = metrics.badge.width / 2;
+                            if (xPos - badgeHalfWidth < previousBadgeRight) {
+                                return;
+                            }
+                            previousBadgeRight = xPos + badgeHalfWidth;
 
                             // Three presentations, in order of precedence:
-                            //   < 0            no score at all -> grey dash
-                            //   visibility     unknown (model dropped it, typically
-                            //                  the forecast tail) -> grey "NN?", so an
-                            //                  estimate never reads as a hard number
-                            //   otherwise      the normal colour ladder
-                            let label;
-                            if (probability < 0) {
-                                label = '–';
+                            //   no rating      no score at all -> grey dash, no badge: a
+                            //                  colored one would claim a verdict that was
+                            //                  never reached
+                            //   visibility     unknown (model dropped it, typically the
+                            //                  forecast tail) -> the real letter, but in
+                            //                  neutral grey rather than its severity color
+                            //   otherwise      the badge in its severity's color
+                            if (!point.rating) {
                                 ctx.fillStyle = '#999';
-                            } else if (point.visibilityKnown === false) {
-                                label = `${probability}?`;
-                                ctx.fillStyle = '#888';
+                                ctx.font = metrics.font;
+                                ctx.textAlign = 'center';
+                                ctx.textBaseline = 'middle';
+                                ctx.fillText('–', xPos, yPos);
                             } else {
-                                label = `${probability}`;
-                                // Five steps rather than four, and the top one leaves the
-                                // green family entirely: dark green against green was a
-                                // distinction nobody could see at 24px on a white card.
-                                //
-                                // Every hue is picked against white at that size, which is
-                                // the only ground that matters here. The hard pair is
-                                // orange against red rather than the yellow: leaning the
-                                // orange away from red is what keeps the bottom two bands
-                                // apart, and it is why the red is #dc2626 rather than the
-                                // CSS red it was.
-                                if (probability >= 90) {
-                                    ctx.fillStyle = '#1d4ed8';
-                                } else if (probability >= 80) {
-                                    ctx.fillStyle = '#15803d';
-                                } else if (probability >= 60) {
-                                    ctx.fillStyle = '#fab005';
-                                } else if (probability >= 40) {
-                                    ctx.fillStyle = '#f97316';
+                                const style = RATING_STYLE[point.rating] || { letter: '?', fill: '#999', text: '#fff' };
+                                if (point.visibilityKnown === false) {
+                                    drawBadge(ctx, xPos, yPos, metrics.badge,
+                                        ESTIMATE_FILL, ESTIMATE_TEXT, style.letter);
                                 } else {
-                                    ctx.fillStyle = '#dc2626';
+                                    drawBadge(ctx, xPos, yPos, metrics.badge,
+                                        style.fill, style.text, style.letter);
                                 }
                             }
-
-                            // Set text properties
-                            ctx.font = metrics.font;
-                            ctx.textAlign = 'center';
-                            ctx.textBaseline = 'middle';
-
-                            // Draw the text
-                            ctx.fillText(label, xPos, yPos);
                             
                             // Draw weather icon if available
                             if (point.weatherCode !== undefined) {

@@ -133,33 +133,38 @@ type WindLayer struct {
 }
 
 type VfrPoint struct {
-	Time        string `json:"time"`
-	Probability int    `json:"probability"`
+	Time string `json:"time"`
+	// Rating is the worst severity any factor in vfrLimits reached this hour --
+	// "perfect" unless something drags it down. Empty means the hour could not be scored
+	// at all (no daylight window resolved), which the frontend renders as "no data"
+	// rather than a rating.
+	Rating      string `json:"rating"`
 	WeatherCode string `json:"weather_code"`
-	// VisibilityKnown is false when the model had no visibility for this hour.
-	// Probability is then computed from the remaining factors and the frontend
-	// marks it as an estimate. A Probability of -1 means no score at all.
+	// VisibilityKnown is false when the model had no visibility for this hour. Rating is
+	// then computed from the remaining factors and the frontend marks it as an estimate.
 	VisibilityKnown bool `json:"visibility_known"`
-	// Penalties explains the score: one entry per factor that cost something, worst
-	// first. An hour with nothing against it carries none, so a clear forecast adds
-	// nothing to the payload. A no-go hour carries exactly one -- the reason.
-	Penalties []VfrPenalty `json:"penalties,omitempty"`
+	// Factors explains the rating: one entry per factor that scored worse than perfect,
+	// worst first. An hour with nothing against it carries none, so a clear forecast adds
+	// nothing to the payload. Every factor that reached the worst band is included, even
+	// when that band is no-go -- two factors can be past their wall in the same hour, and
+	// both are the reason.
+	Factors []VfrFactor `json:"factors,omitempty"`
 }
 
-// VfrPenalty is one factor's contribution to an hour's score, as scored against vfrLimits.
-type VfrPenalty struct {
+// VfrFactor is one factor's contribution to an hour's rating, as scored against vfrLimits.
+type VfrFactor struct {
 	Factor   string  `json:"factor"`   // "crosswind gust spread"
 	Value    float64 `json:"value"`    // 7.27
 	Unit     string  `json:"unit"`     // "kn"
 	Severity string  `json:"severity"` // "good" | "difficult" | "critical" | "no-go"
-	Cost     int     `json:"cost"`     // points subtracted from 100
-	// Scale is present when the factor's cost was modulated by a second quantity --
-	// precipitation is charged for what would fall, times how likely it is to fall. Cost
-	// is the scaled figure; this is what scaled it.
+	// Scale is present when the factor's value was discounted by a second quantity --
+	// precipitation is judged on what would fall, times how likely it is to fall. Value
+	// above is the raw amount, unscaled; this is what discounted it before Severity was
+	// read off the curve.
 	Scale *VfrScale `json:"scale,omitempty"`
 }
 
-// VfrScale is the quantity that modulated a penalty.
+// VfrScale is the quantity that modulated a factor's value.
 type VfrScale struct {
 	Name  string  `json:"name"`  // "probability"
 	Value float64 `json:"value"` // 88

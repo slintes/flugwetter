@@ -9,8 +9,8 @@
 
 import './plugins.js';
 import { getWindDirectionName } from './plugins.js';
-import { pinAxisWidth, AXIS_WIDTHS_WIDE, isNarrowViewport } from './viewport.js';
-import { formatPenalties } from './vfr-penalties.js';
+import { pinAxisWidth, AXIS_WIDTHS_WIDE } from './viewport.js';
+import { formatBreakdown } from './vfr-breakdown.js';
 
 export const charts = {
     vfr: null,
@@ -135,7 +135,7 @@ export function initializeCharts() {
                         // What the score lost and to what. Chart.js renders an array as
                         // one line each.
                         label: function(context) {
-                            return formatPenalties(context.raw, { compact: isNarrowViewport() });
+                            return formatBreakdown(context.raw);
                         }
                     }
                 }

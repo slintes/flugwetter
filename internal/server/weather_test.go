@@ -180,8 +180,8 @@ func TestProcessWeatherData_SurvivesDaylightLookupFailure(t *testing.T) {
 		t.Fatalf("len(VfrData) = %d, want %d", len(got.VfrData), len(times))
 	}
 	for i, vp := range got.VfrData {
-		if vp.Probability != -1 {
-			t.Errorf("VfrData[%d].Probability = %d, want -1 when the hour cannot be scored", i, vp.Probability)
+		if vp.Rating != "" {
+			t.Errorf("VfrData[%d].Rating = %q, want empty when the hour cannot be scored", i, vp.Rating)
 		}
 		if strings.HasSuffix(vp.WeatherCode, "-night") {
 			t.Errorf("VfrData[%d].WeatherCode = %q, want no -night suffix from a failed lookup", i, vp.WeatherCode)
@@ -259,10 +259,10 @@ func TestProcessWeatherData_SetsGeneratedAt(t *testing.T) {
 	}
 }
 
-// The precipitation penalty is the only scaled one, and neither the golden fixture nor a
-// typical summer forecast contains a drop of rain -- so without this the path from the
-// decoded hour through conditions to a scaled VfrPenalty is never walked end to end.
-func TestProcessWeatherData_ScaledPenaltyReachesTheWireFormat(t *testing.T) {
+// Precipitation is the only scaled factor, and neither the golden fixture nor a typical
+// summer forecast contains a drop of rain -- so without this the path from the decoded hour
+// through conditions to a scaled VfrFactor is never walked end to end.
+func TestProcessWeatherData_ScaledFactorReachesTheWireFormat(t *testing.T) {
 	stubDayLight(t)
 
 	fixture := hourlyFixture([]string{"2026-08-03T12:00"})
@@ -274,31 +274,36 @@ func TestProcessWeatherData_ScaledPenaltyReachesTheWireFormat(t *testing.T) {
 	if len(got.VfrData) != 1 {
 		t.Fatalf("len(VfrData) = %d, want 1", len(got.VfrData))
 	}
-	// The fixture's other fields are not all free -- its visibility costs a point or two --
-	// so pick the penalty under test out rather than assuming it is alone.
-	var rain *VfrPenalty
-	for i, p := range got.VfrData[0].Penalties {
-		if p.Factor == "precipitation" {
-			rain = &got.VfrData[0].Penalties[i]
+	// The fixture's other fields are not all free -- its visibility is merely good, not
+	// perfect -- so pick the factor under test out rather than assuming it is alone.
+	var rain *VfrFactor
+	for i, f := range got.VfrData[0].Factors {
+		if f.Factor == "precipitation" {
+			rain = &got.VfrData[0].Factors[i]
 		}
 	}
 	if rain == nil {
-		t.Fatalf("Penalties = %+v, want one for precipitation", got.VfrData[0].Penalties)
+		t.Fatalf("Factors = %+v, want one for precipitation", got.VfrData[0].Factors)
 	}
 
 	if rain.Value != 3.2 || rain.Unit != "mm/h" {
-		t.Errorf("penalty = %+v, want the amount in mm/h, unscaled", *rain)
+		t.Errorf("factor = %+v, want the amount in mm/h, unscaled", *rain)
 	}
 	if rain.Scale == nil {
-		t.Fatal("Scale = nil, want the probability that scaled it")
+		t.Fatal("Scale = nil, want the probability that discounted it")
 	}
 	if rain.Scale.Value != 88 {
-		t.Errorf("Scale.Value = %v, want 88 -- the hour's probability must reach the score",
+		t.Errorf("Scale.Value = %v, want 88 -- the hour's probability must reach the rating",
 			rain.Scale.Value)
 	}
-	// 3.2mm/h is worth 41 if it falls, and at 88% the weight has already reached 1.
-	if rain.Cost != 41 {
-		t.Errorf("Cost = %d, want 41 (the amount's cost, scaled by the probability)", rain.Cost)
+	// At 88% the discount weight has already reached 1, so the raw 3.2mm/h is read as-is;
+	// it sits in (1.0, 4.0], the segment climbing toward the critical anchor.
+	if rain.Severity != critical.String() {
+		t.Errorf("Severity = %q, want %q", rain.Severity, critical.String())
+	}
+	if got.VfrData[0].Rating != critical.String() {
+		t.Errorf("Rating = %q, want %q (precipitation is the worst factor this hour)",
+			got.VfrData[0].Rating, critical.String())
 	}
 }
 
@@ -314,8 +319,8 @@ func TestProcessWeatherData_UnparseableHourIsNotScored(t *testing.T) {
 	if len(got.VfrData) != 1 {
 		t.Fatalf("len(VfrData) = %d, want 1", len(got.VfrData))
 	}
-	if got.VfrData[0].Probability != -1 {
-		t.Errorf("Probability = %d, want -1 for an unscoreable hour", got.VfrData[0].Probability)
+	if got.VfrData[0].Rating != "" {
+		t.Errorf("Rating = %q, want empty for an unscoreable hour", got.VfrData[0].Rating)
 	}
 	if got.VfrData[0].VisibilityKnown {
 		t.Error("VisibilityKnown = true, want false when no score was computed")

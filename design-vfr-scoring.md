@@ -46,6 +46,9 @@ multiplies it. Where a factor reaches a severity is still entirely its own busin
 is where the real difference between a ceiling and a gust spread lives. A factor is four
 thresholds and one weight.
 
+**Revised again by D9.** The ladder itself is gone: severity is no longer converted to a
+number at all, so there is nothing left to share and nothing left to weight.
+
 ### D2 — Costs ramp between anchors instead of stepping
 
 A factor's curve is a handful of `anchor{severity, at}` points and the cost between two of
@@ -106,6 +109,11 @@ rather than at the end, so the numbers on screen add up to the score on screen.
 Without this, "why is tomorrow 11:00 only 95%?" is answerable only by someone with the
 source, the server and a debug log.
 
+**Revised by D9.** There is no score left to add up to, so costs are gone from the
+breakdown along with the rest of the ladder. It still lists every non-perfect factor worst
+first, and now does so even for a no-go hour: nothing is trimmed to keep an arithmetic total
+intact, because there no longer is one.
+
 ### D7 — Daylight is a factor like any other
 
 It has no continuous scale — the twilight boundaries move with the date and the latitude,
@@ -149,6 +157,47 @@ The mechanism generalises. Forecast gusts have the same problem — Open-Meteo's
 say how much the members agree about them — and that would be a scale on the gust factor
 rather than anything new.
 
+**Revised by D9.** The scale now discounts the *value* toward the curve's own perfect
+anchor before the curve is read, rather than discounting a cost afterward — there is no
+cost left to discount. The weight curve itself, its decision shape, and the "no wall on a
+scaled factor" rule are all unchanged; only which side of the lookup the discount lands on
+moved.
+
+### D9 — Severity replaces points; the rating is the worst band, not a sum
+
+**Revises D1, D6 and D8.** The shared ladder made retuning easier than the fully per-factor
+costs it replaced, but it did not make the score easy to reason about: turning a handful of
+independent judgements ("this crosswind is difficult") into one number still needed weights
+to make severities comparable across factors, and the weights were themselves another layer
+nobody could eyeball.
+
+An hour's rating is now the worst severity any single factor reaches — a weakest-link read,
+not a sum. `severityCost`, `factor.weight` and the cost arithmetic in `evaluate`/`scoreVFR`
+are gone. Every curve's thresholds are unchanged; only the aggregation is different.
+
+Two mechanisms carried over with their shape intact, re-pointed at a value instead of a
+cost:
+
+- **The wall.** `factor.wall` still makes the last anchor a no-go; passing it still ends
+  the hour outright, whatever the rest of the weather is doing.
+- **Scaling.** Precipitation's probability still discounts its severity, but by discounting
+  the *value* toward the curve's own perfect anchor before the curve is read, rather than
+  discounting a cost afterward: `effective = perfectAt + (v-perfectAt) * weight`. At
+  weight 1 nothing changes; at weight 0 the value collapses onto the perfect anchor,
+  whatever it actually was. `scale`/`scalePoint` and their validation are otherwise
+  unchanged.
+
+One behaviour changed as a direct consequence, not a separate choice: **every factor is now
+evaluated, with no short-circuit on the first no-go.** Two factors can be past their wall in
+the same hour, and the breakdown lists both — previously "the order of the table decides
+which reason a doomed hour reports" was accepted as a quirk of the sum; removing the sum
+removed the reason to accept it.
+
+Twilight's anchor moved from `critical` (softened with a 0.5 weight, costing 25 of a
+possible 50) to `difficult` outright. Without a weight to fake a smaller number, the honest
+way to keep twilight from reading as bad as a critical crosswind is to give it the softer
+band by name.
+
 ## Calibration
 
 **The numbers live in `vfrLimits` and nowhere else.** They are personal minima and get
@@ -157,24 +206,29 @@ describes the shape of the curves rather than their values.
 
 What the shape is meant to express, and what should survive a retune:
 
-- Total wind is the gentler of the two wind curves. It overlaps with crosswind, and a
-  strong wind straight down the runway is not the problem a strong crosswind is.
-- Gusts are scored on their margin over the steady crosswind, not their absolute value:
+- Total wind's thresholds sit further out than crosswind's. It overlaps with crosswind, and
+  a strong wind straight down the runway is not the problem a strong crosswind is -- so wind
+  reaches each band later, not "for less", since there is no longer a "less" to weigh it
+  against.
+- Gusts are judged on their margin over the steady crosswind, not their absolute value:
   5 gusting 15 is harder to land in than a steady 15.
-- Precipitation is charged for what would fall, times how likely it is to fall. A 90% chance
+- Precipitation is judged on what would fall, times how likely it is to fall. A 90% chance
   of a tenth of a millimetre is not a reason to stay on the ground; a 90% chance of a
   downpour is.
-- A curve should not have a flat segment between two steep ones. A slope that rises,
-  falls and rises again means the anchors disagree about where the difficulty is.
+- A curve's thresholds should each mark a real change in difficulty. Two anchors placed so
+  close together that the band between them is essentially never reached is a threshold
+  that was not really chosen.
 
 ## Consequences
 
-- Mid-band ceilings and visibilities cost more than they did under the ladder, because the
-  ramp climbs toward 100 at the no-go instead of stepping.
-- A factor without a no-go clamps at its last anchor rather than extrapolating; the old
-  ladder multiplied without bound.
-- An hour can still reach 0 by accumulation rather than by a no-go — poor visibility inside
-  civil twilight will do it — and the breakdown says so.
+- An hour's rating is the worst band any factor reaches, not an accumulation of all of
+  them: a critical crosswind alongside three merely-good factors rates exactly as badly as
+  the crosswind would on its own. Nothing adds up any more, and that is the point.
+- A factor without a wall clamps at its last anchor's severity instead of escalating
+  further; precipitation is the case, so heavy but unlikely rain cannot end the hour by
+  itself.
+- Two factors can each be past their own wall in the same hour, and the breakdown lists
+  both, worst first, rather than whichever the table happens to reach first.
 - `CLAUDE.md` used to instruct that new rules be added inline to the one scoring function.
   That instruction is reversed: new rules are rows in `vfrLimits`, and a rule that cannot
   be expressed as a curve over one extracted value is a reason to reconsider the rule.

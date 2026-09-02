@@ -12,24 +12,25 @@ All four share one time axis and pan and zoom together.
 
 | Chart | Shows |
 |---|---|
-| **VFR probability** | A 0–100 score per hour with a weather icon. The headline. |
+| **VFR rating** | A five-band rating per hour — perfect, good, difficult, critical or no-go — with a weather icon. The headline. |
 | **Clouds & visibility** | Cloud layers by height with coverage, cloud base as a flight level, visibility in km. |
 | **Wind** | Wind barbs by altitude, plus 10m speed, gusts and the crosswind component. |
 | **Temperature** | Temperature, dew point, and precipitation with probability-scaled bars. |
 
-The VFR score starts at 100 and subtracts what each factor is worth: cloud base, visibility,
-total wind, crosswind and its gust spread, precipitation, heat and daylight. A factor's cost
-is a curve rather than a step, so a value a little past a threshold costs a little. Most
-factors also carry a hard limit, and any one of them past it ends the hour at 0. `-1` means
-the hour could not be scored at all and is rendered as "no data", not as bad weather.
+Each factor — cloud base, visibility, total wind, crosswind and its gust spread,
+precipitation, heat and daylight — is judged on its own curve: perfect, good, difficult,
+critical, or past a hard limit into no-go. The hour's rating is simply the worst band any
+single factor reaches, a weakest-link read rather than a sum, so one critical crosswind
+rates exactly as badly as it would alongside three merely-good factors. An unscored hour
+(no daylight window resolved) is rendered as "no data", not as bad weather.
 
-Every limit and every penalty lives in one table, `vfrLimits` in `internal/server/vfr.go`.
-Hovering an hour on the VFR chart lists exactly what its score lost and to what.
+Every limit lives in one table, `vfrLimits` in `internal/server/vfr.go`. Hovering an hour on
+the VFR chart lists every factor that is not perfect, worst first, and what it rated.
 
 All four charts shade the light behind the data: grey for night, bounded by civil twilight —
-the same boundary that scores those hours 0, so the shading and the score always agree — and
-a lighter grey for the civil twilight either side of it, the hours that are legal but cost
-the daylight penalty. At the home airfield a green band marks its published operating hours,
+the same boundary that rates those hours no-go, so the shading and the rating always agree —
+and a lighter grey for the civil twilight either side of it, the hours that are legal but
+rate difficult for it. At the home airfield a green band marks its published operating hours,
 0800–1800Z, which is 10:00–20:00 local in summer and 09:00–19:00 in winter. Every other
 airfield's operating times are shown as text under the picker, copied verbatim from the AIP
 with the page it came from and a link to the airfield's own site.

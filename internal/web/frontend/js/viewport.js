@@ -56,11 +56,22 @@ export function axisWidths() {
 // drift apart again.
 export const pinAxisWidth = side => scale => { scale.width = axisWidths()[side]; };
 
-// The VFR chart's weather icons and probability labels, which are drawn by the vfrText
-// plugin rather than by Chart.js. At full size one hour needs 56px, and a phone's plot
-// area cannot give that to even one hour, so they shrink with the axes.
-export const VFR_METRICS_WIDE = { icon: 36, font: '24px Narrow', unknownFont: '20px Narrow' };
-export const VFR_METRICS_NARROW = { icon: 20, font: '14px Narrow', unknownFont: '12px Narrow' };
+// The VFR chart's weather icons and rating badges, which are drawn by the vfrText plugin
+// rather than by Chart.js. At full size one hour needs 56px, and a phone's plot area cannot
+// give that to even one hour, so they shrink with the axes.
+//
+// `badge` is a fixed size regardless of which letter it holds -- P/G/D/C/X are all one
+// glyph, unlike the "0".."100?" range of the percentages this replaced -- which is what
+// lets vfrSlotWidth (panzoom.js) budget a constant width per hour instead of measuring
+// every point's label.
+export const VFR_METRICS_WIDE = {
+    icon: 36, font: '24px Narrow', unknownFont: '20px Narrow',
+    badge: { width: 26, height: 22, radius: 5 },
+};
+export const VFR_METRICS_NARROW = {
+    icon: 20, font: '14px Narrow', unknownFont: '12px Narrow',
+    badge: { width: 18, height: 16, radius: 4 },
+};
 
 export function vfrMetrics() {
     return isNarrowViewport() ? VFR_METRICS_NARROW : VFR_METRICS_WIDE;

@@ -20,28 +20,13 @@ const TOUCH_AXIS_LOCK_PX = 8;
 
 let initialZoomApplied = false;
 
-// vfrSlotWidth returns the horizontal room one hour needs before the icon or the label
-// starts touching its neighbour. The labels are measured rather than assumed, because
-// their width swings a lot: "0" against "100?".
+// vfrSlotWidth returns the horizontal room one hour needs before the icon or the badge
+// starts touching its neighbour. The badge is one fixed size regardless of which letter it
+// holds, so this no longer measures anything -- the old percentages ranged from "0" to
+// "100?" and had to be measured per point to find the widest one on screen.
 export function vfrSlotWidth() {
     const metrics = vfrMetrics();
-    const ctx = charts.vfr.ctx;
-    ctx.save();
-    ctx.font = metrics.font;
-    let widestLabel = 0;
-    (charts.vfr.data.datasets[0].data || []).forEach(point => {
-        let label;
-        if (point.probability < 0) {
-            label = '–';
-        } else if (point.visibilityKnown === false) {
-            label = `${point.probability}?`;
-        } else {
-            label = `${point.probability}`;
-        }
-        widestLabel = Math.max(widestLabel, ctx.measureText(label).width);
-    });
-    ctx.restore();
-    return Math.max(metrics.icon, widestLabel) + VFR_SLOT_GAP;
+    return Math.max(metrics.icon, metrics.badge.width) + VFR_SLOT_GAP;
 }
 
 export function initialZoomHours() {

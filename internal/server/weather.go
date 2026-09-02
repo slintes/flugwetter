@@ -550,16 +550,16 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 			WindLayers:        processWindLayers(apiResponse, i),
 		})
 
-		// Calculate VFR probability
 		// Score the hour against vfrLimits. An unparseable timestamp leaves the hour
-		// unscored (-1, "no data") rather than guessing at the daylight window.
+		// unscored ("", "no data") rather than guessing at the daylight window.
 		hourStart, timeErr := hourTime(timeStr)
-		vfrProbability, visibilityKnown := -1, false
-		var vfrPenalties []VfrPenalty
+		vfrRating, visibilityKnown := perfect, false
+		var known bool
+		var vfrFactors []VfrFactor
 		if timeErr != nil {
 			slog.Error("failed to parse time", "time", timeStr, "error", timeErr)
 		} else {
-			vfrProbability, vfrPenalties, visibilityKnown = scoreVFR(conditions{
+			vfrRating, known, vfrFactors, visibilityKnown = scoreVFR(conditions{
 				time:                     hourStart,
 				daylight:                 hourDaylight,
 				cloudBaseFL:              cloudBase,
@@ -571,6 +571,13 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 				precipitation:            tempPoint.Precipitation,
 				precipitationProbability: tempPoint.PrecipitationProbability,
 			})
+		}
+		// Empty string is the wire form of "not scored" -- known is false whenever
+		// timeErr fired above (vfrRating never left its zero value) or scoreVFR itself
+		// found no daylight window.
+		vfrRatingStr := ""
+		if known {
+			vfrRatingStr = vfrRating.String()
 		}
 
 		// Get weather code if available
@@ -589,10 +596,10 @@ func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, ai
 		}
 		processed.VfrData = append(processed.VfrData, VfrPoint{
 			Time:            timeStr,
-			Probability:     vfrProbability,
+			Rating:          vfrRatingStr,
 			WeatherCode:     processWeatherCode,
 			VisibilityKnown: visibilityKnown,
-			Penalties:       vfrPenalties,
+			Factors:         vfrFactors,
 		})
 
 	}
