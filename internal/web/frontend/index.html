@@ -23,11 +23,8 @@
             <div class="airport-picker">
                 <select id="airportSelect" aria-label="Select airport"></select>
                 <button type="button" id="mapPickerButton" title="Pick an airport on the map">Map…</button>
+                <button type="button" id="airportInfoButton" title="Opening hours, AIP source and website">Airport info</button>
             </div>
-            <!-- The selected airfield's published operating times, verbatim from the AIP,
-                 with the AIP page it came from and a link to the airfield's own site.
-                 Filled by updateOpeningHours; hidden when the airfield has none. -->
-            <p class="opening-hours" id="openingHours" hidden></p>
         </header>
 
         <main>
@@ -107,9 +104,9 @@
         </main>
     </div>
 
-    <div class="map-modal" id="airportMapModal" hidden>
-        <div class="map-modal-content" role="dialog" aria-modal="true" aria-labelledby="mapModalTitle">
-            <div class="map-modal-header">
+    <div class="modal-backdrop map-modal" id="airportMapModal" hidden>
+        <div class="modal-content map-modal-content" role="dialog" aria-modal="true" aria-labelledby="mapModalTitle">
+            <div class="modal-header">
                 <h3 id="mapModalTitle">Select an airport</h3>
                 <button type="button" id="mapModalClose" aria-label="Close map">&times;</button>
             </div>
@@ -127,6 +124,21 @@
                 Shows only airspace reaching below 8000 ft, and the published plan may be
                 incomplete. AIP ENR 5.1 and NOTAM remain authoritative.
             </p>
+        </div>
+    </div>
+
+    <!-- The selected airfield's published operating times, verbatim from the AIP, its AIP
+         source page and date, and a link to the airfield's own site. Filled per-airport by
+         updateAirportInfo; the title text and body content below are only the pre-JS
+         fallback. Same backdrop/close/Escape pattern as #airportMapModal, sharing its
+         .modal-backdrop/.modal-content/.modal-header chrome. -->
+    <div class="modal-backdrop info-modal" id="airportInfoModal" hidden>
+        <div class="modal-content info-modal-content" role="dialog" aria-modal="true" aria-labelledby="airportInfoModalTitle">
+            <div class="modal-header">
+                <h3 id="airportInfoModalTitle">Airport info</h3>
+                <button type="button" id="airportInfoModalClose" aria-label="Close airport info">&times;</button>
+            </div>
+            <div class="info-modal-body" id="airportInfoBody"></div>
         </div>
     </div>
 

@@ -99,8 +99,11 @@ header h1 {
     cursor: not-allowed;
 }
 
-/* Map picker modal */
-.map-modal {
+/* Shared chrome for every modal dialog on the page (the map picker and the airport info
+   dialog so far): a full-viewport backdrop, a white panel, and a header row with a title
+   and a close button. Only the panel's own size is modal-specific -- see
+   .map-modal-content / .info-modal-content below. */
+.modal-backdrop {
     position: fixed;
     inset: 0;
     background: rgba(2, 6, 23, 0.7);
@@ -111,24 +114,35 @@ header h1 {
     padding: clamp(8px, 4vmin, 40px);
 }
 
-.map-modal[hidden] {
+.modal-backdrop[hidden] {
     display: none;
 }
 
-.map-modal-content {
+.modal-content {
     background: white;
     border-radius: 12px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-    /* Grows with the window in both directions, capped so the dialog does not become
-       absurd on a large monitor. The backdrop's padding is what keeps it off the edges. */
-    width: min(1200px, 100%);
-    height: min(1000px, 100%);
     display: flex;
     flex-direction: column;
     overflow: hidden;
 }
 
-.map-modal-header {
+/* Grows with the window in both directions, capped so the dialog does not become absurd on
+   a large monitor. The backdrop's padding is what keeps it off the edges. */
+.map-modal-content {
+    width: min(1200px, 100%);
+    height: min(1000px, 100%);
+}
+
+/* A small text dialog: sized to its content rather than filling the window, with its own
+   scrollbar if a long entry (Juist, Norderney) ever outgrows the cap. */
+.info-modal-content {
+    width: min(480px, 100%);
+    height: auto;
+    max-height: min(600px, 90vh);
+}
+
+.modal-header {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
@@ -137,13 +151,13 @@ header h1 {
     border-bottom: 3px solid #74b9ff;
 }
 
-.map-modal-header h3 {
+.modal-header h3 {
     color: #334155;
     font-size: 1rem;
     font-weight: 600;
 }
 
-.map-modal-header button {
+.modal-header button {
     background: none;
     border: none;
     font-size: 1.6rem;
@@ -177,6 +191,40 @@ header h1 {
     font-size: 0.78rem;
     line-height: 1.4;
     color: #8a95a1;
+}
+
+/* Airport info dialog */
+.info-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 15px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: #334155;
+}
+
+.airport-info-hours-line + .airport-info-hours-line {
+    margin-top: 2px;
+}
+
+.airport-info-source {
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+.airport-info-website {
+    margin-top: 6px;
+}
+
+.airport-info-website a {
+    color: #2563eb;
+}
+
+.airport-info-empty {
+    color: #64748b;
+    font-style: italic;
 }
 
 /* The window list inside a restricted-area popup.
@@ -351,30 +399,6 @@ canvas {
     gap: 6px;
     max-width: 100%;
     overflow: hidden;
-}
-
-/* The airfield's operating hours, under the picker. Wraps rather than truncating: the
-   longest entry (Norderney, four seasonal ranges) is a paragraph on a phone, and a clipped
-   opening time is worse than a tall one. */
-.opening-hours {
-    margin: 8px 0 0;
-    text-align: center;
-    font-size: 0.85rem;
-    color: #94a3b8;
-    line-height: 1.5;
-}
-
-.opening-hours a {
-    color: #7ea6d8;
-}
-
-.opening-hours-source {
-    color: #64748b;
-}
-
-.opening-hours-separator {
-    margin: 0 8px;
-    color: #475569;
 }
 
 /* Sits with the range buttons rather than being pushed to the edge. `margin-left: auto`

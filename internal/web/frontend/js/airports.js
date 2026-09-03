@@ -46,6 +46,7 @@ export async function initAirportPicker(onChange) {
 
     const select = document.getElementById('airportSelect');
     const mapButton = document.getElementById('mapPickerButton');
+    const infoButton = document.getElementById('airportInfoButton');
 
     try {
         const response = await fetch('/api/config');
@@ -59,6 +60,7 @@ export async function initAirportPicker(onChange) {
         console.error('Error loading config:', error);
         select.disabled = true;
         mapButton.disabled = true;
+        infoButton.disabled = true;
         return;
     }
 
@@ -85,9 +87,20 @@ export async function initAirportPicker(onChange) {
             closeAirportMap();
         }
     });
+    infoButton.addEventListener('click', openAirportInfo);
+    document.getElementById('airportInfoModalClose').addEventListener('click', closeAirportInfo);
+    document.getElementById('airportInfoModal').addEventListener('click', event => {
+        if (event.target.id === 'airportInfoModal') {
+            closeAirportInfo();
+        }
+    });
     document.addEventListener('keydown', event => {
         if (event.key === 'Escape') {
+            // Both calls are harmless no-ops on a modal that is already hidden, and the
+            // two can never both be open at once -- each backdrop covers the full
+            // viewport, which blocks the other's trigger button.
             closeAirportMap();
+            closeAirportInfo();
         }
     });
 }
@@ -165,30 +178,55 @@ function updateAirportHeading() {
     document.title = airport
         ? `Flugwetter ${airport.identifier} — ${airport.name}`
         : 'Flugwetter - Aviation Weather Forecast';
-    updateOpeningHours(airport);
+    updateAirportInfo(airport);
 }
 
-// The airfield's published operating times, as the AIP prints them.
+// The airfield's published operating times, its AIP source, and its website -- shown in the
+// "Airport info" dialog rather than the header, so a long entry (Juist's three seasonal
+// clauses, Norderney's four) has room to be read rather than wrapping under the picker on
+// every load.
 //
-// Each of the three fields is optional and rendered only if present, so a partially filled
-// entry still looks deliberate rather than showing an empty separator. The source carries a
-// date because the AIP moves on a 28-day cycle and this JSON does not; the link is how a
-// reader finds out the printed line has drifted.
-function updateOpeningHours(airport) {
-    const element = document.getElementById('openingHours');
-    element.replaceChildren();
+// Built from nodes, not innerHTML: opening_hours is free text copied verbatim out of the
+// AIP and is never parsed, so it has no business being parsed as markup on the way to the
+// screen either. Each of the three fields is optional; a partially filled entry just omits
+// what it doesn't have rather than showing an empty line.
+function updateAirportInfo(airport) {
+    const title = document.getElementById('airportInfoModalTitle');
+    title.textContent = airport ? `${airport.identifier} — ${airport.name}` : 'Airport info';
 
-    const parts = [];
+    const body = document.getElementById('airportInfoBody');
+    body.replaceChildren();
+
+    let any = false;
+
+    // The AIP separates clauses with ";" (SUM/WIN, or day-of-week groups like
+    // "Sat, Sun, HOL") -- one clause per line reads far better than the run-on sentence
+    // the header used to squeeze onto one line.
     if (airport && airport.opening_hours) {
-        parts.push(document.createTextNode(airport.opening_hours));
+        airport.opening_hours.split(';').forEach(clause => {
+            const trimmed = clause.trim();
+            if (!trimmed) {
+                return;
+            }
+            const line = document.createElement('div');
+            line.className = 'airport-info-hours-line';
+            line.textContent = trimmed;
+            body.appendChild(line);
+            any = true;
+        });
     }
+
     if (airport && airport.opening_hours_source) {
-        const source = document.createElement('span');
-        source.className = 'opening-hours-source';
+        const source = document.createElement('p');
+        source.className = 'airport-info-source';
         source.textContent = airport.opening_hours_source;
-        parts.push(source);
+        body.appendChild(source);
+        any = true;
     }
+
     if (airport && airport.website) {
+        const website = document.createElement('p');
+        website.className = 'airport-info-website';
         const link = document.createElement('a');
         link.href = airport.website;
         link.target = '_blank';
@@ -196,20 +234,25 @@ function updateOpeningHours(airport) {
         // one; noreferrer keeps the airfield's logs free of our URL.
         link.rel = 'noopener noreferrer';
         link.textContent = 'airfield site';
-        parts.push(link);
+        website.appendChild(link);
+        body.appendChild(website);
+        any = true;
     }
 
-    parts.forEach((part, i) => {
-        if (i > 0) {
-            const separator = document.createElement('span');
-            separator.className = 'opening-hours-separator';
-            separator.textContent = '·';
-            element.appendChild(separator);
-        }
-        element.appendChild(part);
-    });
+    if (!any) {
+        const empty = document.createElement('p');
+        empty.className = 'airport-info-empty';
+        empty.textContent = 'No published information for this airfield.';
+        body.appendChild(empty);
+    }
+}
 
-    element.hidden = parts.length === 0;
+function openAirportInfo() {
+    document.getElementById('airportInfoModal').hidden = false;
+}
+
+function closeAirportInfo() {
+    document.getElementById('airportInfoModal').hidden = true;
 }
 
 // ---------------------------------------------------------------------------
