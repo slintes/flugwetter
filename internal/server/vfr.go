@@ -236,7 +236,7 @@ var vfrLimits = []factor{
 		value: func(c conditions) (float64, bool) { return c.windSpeed, true },
 		curve: []anchor{
 			{perfect, 5},
-			{good, 10},
+			{good, 15},
 			{difficult, 20},
 			{critical, 30},
 		},

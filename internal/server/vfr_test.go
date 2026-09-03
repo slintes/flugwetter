@@ -355,15 +355,15 @@ func TestScoreVFR_Calibration(t *testing.T) {
 			wantFactor: "visibility",
 		},
 		{
-			name:       "12kn of wind is difficult",
-			with:       func(c conditions) conditions { c.windSpeed = 12; return c },
+			name:       "18kn of wind is difficult",
+			with:       func(c conditions) conditions { c.windSpeed = 18; return c },
 			want:       difficult,
 			wantFactor: "wind",
 		},
 		{
-			// The two wind factors overlap on every hour: 14kn is merely difficult as
-			// total wind, but critical as a crosswind, because it is the one that decides
-			// whether you land.
+			// The two wind factors overlap on every hour, but crosswind is the one that
+			// decides whether you land: the same 14kn that is unremarkable as total wind
+			// is already critical here.
 			name:       "14kn of crosswind is critical",
 			with:       func(c conditions) conditions { c.crosswind = 14; return c },
 			want:       critical,
