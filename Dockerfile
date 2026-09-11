@@ -4,10 +4,8 @@ FROM golang:1.26-alpine AS builder
 
 WORKDIR /src
 
-# Dependencies first, so a source-only change reuses this layer. The module has no
-# requirements at all, but keeping the step means adding one later does not silently
-# invalidate the whole build cache.
-COPY go.mod ./
+# Dependencies first, so a source-only change reuses this layer.
+COPY go.mod go.sum ./
 RUN go mod download
 
 # The frontend is compiled into the binary by go:embed, so it must be present at build

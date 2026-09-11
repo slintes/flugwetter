@@ -3,21 +3,78 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // httpClient is shared by every upstream call. http.DefaultClient has no timeout at any
 // layer, so a hung connection to Open-Meteo or sunrise-sunset.org blocked its goroutine
 // forever. The timeout covers the whole request including the body read.
 var httpClient = &http.Client{Timeout: 10 * time.Second}
+
+// maxUpstreamBody bounds a JSON response from any of the upstreams this function serves --
+// the forecast, sunrise-sunset, and the model-run metadata documents. The forecast is the
+// biggest of the three at well under 1MB; nothing legitimate approaches this, so a response
+// this large is treated as a failure rather than parsed.
+const maxUpstreamBody = 8 << 20 // 8 MiB
+
+// sensitiveQueryParams are the query parameter names redactedError blanks out before an
+// upstream error reaches the log. *url.Error -- what http.Client.Do returns on failure --
+// embeds the full request URL, query string included, so an upstream timeout logged
+// verbatim would otherwise leak whatever credential rides along in the URL. The openAIP key
+// no longer does (see openAIPKeyHeader in tiles.go); this is what keeps that true for
+// whatever comes next, rather than something that has to be remembered.
+var sensitiveQueryParams = []string{"apikey", "api_key", "key", "token", "secret"}
+
+// redactedError renders err for logging with any sensitive query parameter blanked out. Safe
+// to call on any error: an error that is not a *url.Error, or has no query string, passes
+// through as err.Error() unchanged.
+func redactedError(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) {
+		return err.Error()
+	}
+
+	u, parseErr := url.Parse(urlErr.URL)
+	if parseErr != nil {
+		// Can't parse the URL well enough to redact it -- but this is the same string
+		// http.Client itself failed to dial, so it is very unlikely to carry a real query
+		// string, let alone a real credential.
+		return err.Error()
+	}
+
+	q := u.Query()
+	redacted := false
+	for _, name := range sensitiveQueryParams {
+		for key := range q {
+			if strings.EqualFold(key, name) {
+				q.Set(key, "REDACTED")
+				redacted = true
+			}
+		}
+	}
+	if !redacted {
+		return err.Error()
+	}
+
+	u.RawQuery = q.Encode()
+	return fmt.Sprintf("%s %q: %s", urlErr.Op, u.String(), urlErr.Err)
+}
 
 // getJSON performs a GET and returns the body, honouring ctx so a client that goes away
 // cancels the upstream call instead of leaving it running to completion.
@@ -37,9 +94,12 @@ func getJSON(ctx context.Context, url string) ([]byte, error) {
 		return nil, fmt.Errorf("API returned status code: %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxUpstreamBody+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	if len(body) > maxUpstreamBody {
+		return nil, fmt.Errorf("response exceeded %d bytes", maxUpstreamBody)
 	}
 	return body, nil
 }
@@ -206,14 +266,38 @@ func cachedEntry(identifier string) (*cacheEntry, bool) {
 	return entry, ok
 }
 
-// fetchAndCacheWeatherData fetches fresh data from the API and caches it.
+// weatherFetchGroup coalesces concurrent fetches for the same airport into one upstream
+// call. cache.invalidateAll drops every airport's entry at once whenever a model run
+// advances, so a burst of requests landing at that moment previously fanned out into one
+// Open-Meteo call *and up to eight sunrise-sunset calls* per concurrent request rather than
+// per cold airport.
+var weatherFetchGroup singleflight.Group
+
+// fetchAndCacheWeatherData returns fresh data for one airport, coalescing concurrent callers
+// for the same airport into a single fetch via weatherFetchGroup. Every caller gets the
+// leader's result, success or failure alike.
+func fetchAndCacheWeatherData(ctx context.Context, airport Airport) (*ProcessedWeatherData, error) {
+	// context.WithoutCancel: the leader's ctx is one caller's request context. Without
+	// this, that one caller's connection going away would cancel the fetch every other
+	// waiter is blocked on. httpClient's own 10s timeout is what actually bounds it.
+	v, err, _ := weatherFetchGroup.Do(airport.Identifier, func() (any, error) {
+		return fetchAndCacheWeatherDataOnce(context.WithoutCancel(ctx), airport)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*ProcessedWeatherData), nil
+}
+
+// fetchAndCacheWeatherDataOnce does the actual fetch-and-cache work for one airport. It is
+// only ever run once per outstanding request for that airport -- see weatherFetchGroup.
 //
 // The upstream call deliberately runs with no lock held. Holding the cache mutex across it
 // blocked every other airport -- including warm cache hits that needed no network at all --
-// behind one slow Open-Meteo request. The tradeoff is that two simultaneous requests for the
-// same cold airport may both fetch; the double-check below makes the loser discard its
-// result rather than overwrite a fresher entry.
-func fetchAndCacheWeatherData(ctx context.Context, airport Airport) (*ProcessedWeatherData, error) {
+// behind one slow Open-Meteo request. The tradeoff is that this call and a slightly earlier
+// one that has not yet stored its result may still overlap; the double-check below makes the
+// loser discard its result rather than overwrite a fresher entry.
+func fetchAndCacheWeatherDataOnce(ctx context.Context, airport Airport) (*ProcessedWeatherData, error) {
 	slog.Info("fetching fresh weather data", "airport", airport.Identifier)
 
 	processedData, err := fetchWeatherFn(ctx, airport)
@@ -225,7 +309,7 @@ func fetchAndCacheWeatherData(ctx context.Context, airport Airport) (*ProcessedW
 			slog.Warn("serving stale weather data",
 				"airport", airport.Identifier,
 				"age", time.Since(entry.timestamp).Round(time.Minute),
-				"error", err)
+				"error", redactedError(err))
 
 			// A shallow copy: the cached payload is shared with other goroutines and must
 			// not be mutated. Only the flag differs, and the slices are never written to.
@@ -307,7 +391,7 @@ func resolveDaylight(ctx context.Context, airport Airport, times []string) map[s
 
 		dayLight, err := getDayLightFn(ctx, airport.LatString(), airport.LonString(), t)
 		if err != nil {
-			slog.Error("failed to get daylight", "date", date, "error", err)
+			slog.Error("failed to get daylight", "date", date, "error", redactedError(err))
 			continue
 		}
 		daylight[date] = dayLight

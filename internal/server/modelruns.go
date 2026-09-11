@@ -124,7 +124,7 @@ func (t *modelRunTracker) poll(ctx context.Context) (changed bool) {
 		meta, err := fetchModelRunMetaFn(ctx, source.url)
 		if err != nil {
 			failures++
-			slog.Warn("model run metadata unavailable", "model", source.name, "error", err)
+			slog.Warn("model run metadata unavailable", "model", source.name, "error", redactedError(err))
 			continue
 		}
 

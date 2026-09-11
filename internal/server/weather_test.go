@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	neturl "net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -409,6 +412,120 @@ func TestFetchAndCacheWeatherData_KeepsFresherEntry(t *testing.T) {
 	}
 	if got != fresh {
 		t.Error("the stale in-flight result overwrote a fresher cache entry")
+	}
+}
+
+// Concurrent requests for one cold airport must coalesce into a single upstream fetch.
+// cache.invalidateAll drops every airport at once, so a burst at that moment is the case
+// this guards.
+func TestFetchAndCacheWeatherData_CoalescesConcurrentCallers(t *testing.T) {
+	var calls int32
+	release := make(chan struct{})
+	stubFetchWeather(t, func(context.Context, Airport) (*ProcessedWeatherData, error) {
+		atomic.AddInt32(&calls, 1)
+		<-release
+		return &ProcessedWeatherData{GeneratedAt: time.Now()}, nil
+	})
+
+	const n = 10
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, err := fetchAndCacheWeatherData(context.Background(), testAirport)
+			errs[i] = err
+		}(i)
+	}
+
+	time.Sleep(20 * time.Millisecond) // let every goroutine reach the shared call
+	close(release)
+	wg.Wait()
+
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Errorf("fetchWeatherFn called %d times, want 1", got)
+	}
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("caller %d: unexpected error: %v", i, err)
+		}
+	}
+}
+
+// One caller's context being cancelled must not fail the other callers waiting on the same
+// coalesced fetch -- the leader's context is replaced with context.WithoutCancel precisely
+// so that a disconnected client cannot take the shared call down with it.
+func TestFetchAndCacheWeatherData_OneCallerCancellingDoesNotFailTheOthers(t *testing.T) {
+	release := make(chan struct{})
+	stubFetchWeather(t, func(ctx context.Context, _ Airport) (*ProcessedWeatherData, error) {
+		<-release
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return &ProcessedWeatherData{GeneratedAt: time.Now()}, nil
+	})
+
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+
+	var wg sync.WaitGroup
+	var survivorErr error
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, _ = fetchAndCacheWeatherData(cancelledCtx, testAirport)
+	}()
+	go func() {
+		defer wg.Done()
+		time.Sleep(5 * time.Millisecond) // let the first call become the singleflight leader
+		_, survivorErr = fetchAndCacheWeatherData(context.Background(), testAirport)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+	close(release)
+	wg.Wait()
+
+	if survivorErr != nil {
+		t.Errorf("a sibling caller's cancellation failed this one: %v", survivorErr)
+	}
+}
+
+func TestRedactedError_StripsSensitiveQueryParams(t *testing.T) {
+	original := "https://api.tiles.openaip.net/tile.png?apiKey=SECRET123&z=7"
+	err := &neturl.Error{Op: "Get", URL: original, Err: errors.New("i/o timeout")}
+
+	got := redactedError(err)
+
+	if strings.Contains(got, "SECRET123") {
+		t.Errorf("redactedError(%v) = %q, still contains the key", err, got)
+	}
+	if !strings.Contains(got, "REDACTED") {
+		t.Errorf("redactedError(%v) = %q, want it to say REDACTED", err, got)
+	}
+	if !strings.Contains(got, "z=7") {
+		t.Errorf("redactedError(%v) = %q, dropped a harmless parameter it should have kept", err, got)
+	}
+}
+
+func TestRedactedError_LeavesAnErrorWithNoSensitiveParamsUnchanged(t *testing.T) {
+	err := &neturl.Error{Op: "Get", URL: "https://api.open-meteo.com/v1/forecast?latitude=52.7", Err: errors.New("timeout")}
+
+	if got := redactedError(err); got != err.Error() {
+		t.Errorf("redactedError(%v) = %q, want %q unchanged", err, got, err.Error())
+	}
+}
+
+func TestRedactedError_NonURLErrorPassesThrough(t *testing.T) {
+	err := errors.New("some other failure")
+	if got := redactedError(err); got != err.Error() {
+		t.Errorf("redactedError(%v) = %q, want %q unchanged", err, got, err.Error())
+	}
+}
+
+func TestRedactedError_Nil(t *testing.T) {
+	if got := redactedError(nil); got != "" {
+		t.Errorf("redactedError(nil) = %q, want empty", got)
 	}
 }
 

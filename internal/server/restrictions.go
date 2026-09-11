@@ -122,7 +122,7 @@ func (t *restrictionTracker) poll(ctx context.Context) {
 		t.consecutiveFails++
 		fails := t.consecutiveFails
 		t.mutex.Unlock()
-		slog.Warn("airspace use plan unavailable", "error", err, "consecutive", fails)
+		slog.Warn("airspace use plan unavailable", "error", redactedError(err), "consecutive", fails)
 		return
 	}
 

@@ -248,6 +248,11 @@ func Run() error {
 
 	mux := http.NewServeMux()
 
+	// Evict idle per-IP rate limiters so that map does not grow for the life of the
+	// process -- see ratelimit.go.
+	go apiLimiters.janitor(ctx)
+	go tileLimiters.janitor(ctx)
+
 	// Learn the current model runs before warming, so the first payload carries them and
 	// the poller has a baseline to compare against rather than treating every model as new
 	// on its first tick.
@@ -288,7 +293,7 @@ func Run() error {
 
 	srv := &http.Server{
 		Addr:              ":8080",
-		Handler:           loggingMiddleware(securityHeaders(gzipMiddleware(mux))),
+		Handler:           loggingMiddleware(rateLimit(securityHeaders(gzipMiddleware(mux)))),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
@@ -425,7 +430,7 @@ func getWeatherData(w http.ResponseWriter, r *http.Request) {
 
 	data, err := GetWeatherData(r.Context(), airport)
 	if err != nil {
-		slog.Error("failed to fetch weather data", "airport", airport.Identifier, "error", err)
+		slog.Error("failed to fetch weather data", "airport", airport.Identifier, "error", redactedError(err))
 		http.Error(w, "Failed to fetch weather data", http.StatusInternalServerError)
 		return
 	}
