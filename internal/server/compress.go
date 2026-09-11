@@ -83,10 +83,19 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 func (w *gzipResponseWriter) decide() {
 	w.decided = true
 
-	if compressibleType(w.Header().Get("Content-Type")) && len(w.buf) >= gzipMinSize {
-		w.Header().Set("Content-Encoding", "gzip")
-		// Caches must not hand a gzipped body to a client that did not ask for one.
+	compressible := compressibleType(w.Header().Get("Content-Type"))
+	if compressible {
+		// A cache must not hand this response to a client with a different
+		// Accept-Encoding, whether or not compression actually happened below -- a
+		// response withheld only because it was under gzipMinSize is just as
+		// negotiation-dependent as one that was compressed, and reaches this branch
+		// only because the client asked for gzip in the first place (see acceptsGzip
+		// in gzipMiddleware).
 		w.Header().Add("Vary", "Accept-Encoding")
+	}
+
+	if compressible && len(w.buf) >= gzipMinSize {
+		w.Header().Set("Content-Encoding", "gzip")
 		// Content-Length describes the uncompressed body and is now wrong. Left in place
 		// when not compressing, where it is still correct.
 		w.Header().Del("Content-Length")

@@ -65,8 +65,11 @@ func TestGzipMiddleware(t *testing.T) {
 		}
 	})
 
-	// Below a packet's worth the gzip header and the CPU cost buy nothing.
-	t.Run("skips a small response", func(t *testing.T) {
+	// Below a packet's worth the gzip header and the CPU cost buy nothing -- but a shared
+	// cache still must not hand this exact response (compressible type, just too small to
+	// bother) to a client negotiating differently, so Vary still has to be set even though
+	// Content-Encoding is not.
+	t.Run("skips a small response but still sets Vary", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
 		req.Header.Set("Accept-Encoding", "gzip")
 		rec := httptest.NewRecorder()
@@ -79,10 +82,15 @@ func TestGzipMiddleware(t *testing.T) {
 		if rec.Body.String() != `{"ok":true}` {
 			t.Errorf("body = %q, want it passed through untouched", rec.Body.String())
 		}
+		if got := rec.Header().Get("Vary"); !strings.Contains(got, "Accept-Encoding") {
+			t.Errorf("Vary = %q, want it to include Accept-Encoding even though the body was too small to compress", got)
+		}
 	})
 
-	// PNG tiles are already compressed; gzipping them costs CPU and saves nothing.
-	t.Run("skips an already-compressed type", func(t *testing.T) {
+	// PNG tiles are already compressed; gzipping them costs CPU and saves nothing. Nor is
+	// Vary needed here: a type this handler never compresses produces the same bytes for
+	// every client regardless of what it asked for.
+	t.Run("skips an already-compressed type and sets no Vary", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/tiles/openaip/7/66/41.png", nil)
 		req.Header.Set("Accept-Encoding", "gzip")
 		rec := httptest.NewRecorder()
@@ -91,6 +99,9 @@ func TestGzipMiddleware(t *testing.T) {
 
 		if got := rec.Header().Get("Content-Encoding"); got != "" {
 			t.Errorf("Content-Encoding = %q, want empty for image/png", got)
+		}
+		if got := rec.Header().Get("Vary"); got != "" {
+			t.Errorf("Vary = %q, want empty for a type that is never compressed", got)
 		}
 	})
 

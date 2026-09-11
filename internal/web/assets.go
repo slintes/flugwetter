@@ -233,13 +233,35 @@ func (a *Assets) Index(nonce string) ([]byte, error) {
 }
 
 // StaticHandler serves the assets under /static/.
+//
+// http.FileServerFS on its own does two things this project does not want: a request for a
+// directory (no trailing filename) lists it, and a request for the tree's root -- "/static/"
+// itself -- serves index.html by the same convention a bare "/" would on a normal site. The
+// second one is not a listing but is worse: it is the *unrendered* template, {{asset "..."}}
+// calls and {{.ImportMap}} placeholder still in it, served as text/html to anyone who asks.
 func (a *Assets) StaticHandler() http.Handler {
 	files := http.StripPrefix(staticPrefix, http.FileServerFS(a.root))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isBlockedStaticPath(r.URL.Path) {
+			http.NotFound(w, r)
+			return
+		}
+
 		w.Header().Set("Cache-Control", a.cacheControl(r))
 		files.ServeHTTP(w, r)
 	})
+}
+
+// isBlockedStaticPath reports whether p would resolve to a directory listing under
+// http.FileServerFS's own conventions -- a trailing slash, which covers "/static/" itself
+// too (the mux redirects a bare "/static" there before this ever sees it) -- or to a direct
+// request for index.html, the *unrendered* template this handler must never serve.
+func isBlockedStaticPath(p string) bool {
+	if strings.HasSuffix(p, "/") {
+		return true
+	}
+	return path.Base(path.Clean(p)) == "index.html"
 }
 
 // cacheControl decides how long an asset may be held.

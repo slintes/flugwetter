@@ -39,12 +39,20 @@ const (
 		"base-uri 'none'; " +
 		"form-action 'none'; " +
 		"frame-ancestors 'none'"
+
+	// baselineCSP applies to every response except the index document, which sets its own
+	// nonce-bearing policy (see indexHandler and cspTemplate) that overwrites this one --
+	// Header().Set replaces rather than appends, so the two never combine. Without this, a
+	// JSON body or an SVG served under /static/ carried no CSP at all: harmless as long as
+	// nothing ever serves one of those as a top-level document, which is exactly the kind
+	// of assumption a policy exists so that nothing has to keep being true by accident.
+	baselineCSP = "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 )
 
 // securityHeaders sets the response headers that do not depend on the page content.
 //
-// The CSP itself is set by the index handler, which is the only response that needs a nonce
-// and the only one that is a document.
+// The nonce-bearing CSP is set by the index handler, which is the only response that needs a
+// nonce and the only one that is a document; baselineCSP here covers everything else.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
@@ -55,6 +63,14 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		// Belt and braces alongside frame-ancestors, for anything that predates CSP.
 		h.Set("X-Frame-Options", "DENY")
+		h.Set("Content-Security-Policy", baselineCSP)
+		// Harmless today -- this is plain HTTP behind nginx on the loopback hop -- and
+		// means the header cannot be dropped by editing a proxy config that lives outside
+		// this repository. includeSubDomains is safe: there are no subdomains in play.
+		h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+		h.Set("Permissions-Policy", "geolocation=(), camera=(), microphone=(), interest-cohort=()")
+		h.Set("Cross-Origin-Opener-Policy", "same-origin")
+		h.Set("Cross-Origin-Resource-Policy", "same-site")
 
 		next.ServeHTTP(w, r)
 	})

@@ -222,7 +222,12 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Log the request
-		slog.Info("request", "method", r.Method, "path", r.URL.Path, "from", r.RemoteAddr)
+		// No client address at info: this line is written for every request and read
+		// routinely (see the deploy skill), and behind nginx it would only ever be the
+		// proxy's own address anyway. clientIP -- which honours FLUGWETTER_TRUSTED_PROXY,
+		// see ratelimit.go -- goes on the debug-level response line instead, where it is
+		// available for troubleshooting without being in the default log stream.
+		slog.Info("request", "method", r.Method, "path", r.URL.Path)
 
 		// Create a custom response writer to capture the status code
 		rw := &responseWriter{
@@ -244,7 +249,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		}()
 
 		// Log the response status
-		slog.Debug("response", "status", rw.statusCode, "method", r.Method, "path", r.URL.Path)
+		slog.Debug("response", "status", rw.statusCode, "method", r.Method, "path", r.URL.Path, "from", clientIP(r))
 	})
 }
 
