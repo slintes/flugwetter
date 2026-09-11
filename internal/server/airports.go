@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -142,6 +143,12 @@ func validateAirports(list []Airport) error {
 			return fmt.Errorf("airport %s has longitude %v out of range", a.Identifier, a.Longitude)
 		case len(a.RunwayHeadings) == 0:
 			return fmt.Errorf("airport %s has no runway headings", a.Identifier)
+		case a.Website != "" && !isSafeWebsiteURL(a.Website):
+			// FLUGWETTER_AIRPORTS_FILE lets this field be replaced without a rebuild,
+			// and the frontend renders it as a link's href. The same rule is enforced
+			// there too (isSafeWebsiteURL in airports.js) -- this is what stops a bad
+			// scheme from ever reaching a browser in the first place.
+			return fmt.Errorf("airport %s has an unsafe website URL %q", a.Identifier, a.Website)
 		}
 		seen[a.Identifier] = true
 		if a.Pinned {
@@ -154,6 +161,16 @@ func validateAirports(list []Airport) error {
 	}
 
 	return nil
+}
+
+// isSafeWebsiteURL mirrors isSafeWebsiteURL in airports.js: the frontend renders this field
+// as a link's href, so a scheme it should never receive must not reach the payload at all.
+func isSafeWebsiteURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return u.Scheme == "https" || u.Scheme == "http"
 }
 
 // sortAirports puts the pinned airfield first and the rest north to south. Display order is

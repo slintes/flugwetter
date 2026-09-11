@@ -53,3 +53,31 @@ export function windowsFor(name) {
     const area = cached.areas.find(a => a && a.name === name);
     return area && Array.isArray(area.windows) ? area.windows : [];
 }
+
+// formatRestrictedAreaPopup turns one area into plain strings for the map popup: a name and
+// one line per activity window. Kept free of the DOM, like every other function in this
+// module, so it can be tested under node --test; airports.js is what turns this into actual
+// elements (textContent only -- see restrictedAreaPopup there for why that separation
+// matters here specifically).
+export function formatRestrictedAreaPopup(area) {
+    return {
+        name: area && area.name || '',
+        lines: (area && Array.isArray(area.windows) ? area.windows : []).map(formatRestrictionWindow),
+    };
+}
+
+function formatRestrictionWindow(window) {
+    const from = new Date(window.from);
+    const to = new Date(window.to);
+    const day = from.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+    const hhmm = t => `${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}`;
+
+    // UTC, because that is how the plan publishes them and how they are discussed on the
+    // radio -- the same reasoning as the model run label.
+    let text = `${day} ${hhmm(from)}–${hhmm(to)}Z`;
+    const limits = [window.lower, window.upper].filter(Boolean).join('–');
+    if (limits) {
+        text += ` · ${limits}`;
+    }
+    return text;
+}

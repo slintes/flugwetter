@@ -5,7 +5,7 @@
 // the two modules mutually dependent; main.js passes the reload in instead.
 
 import { applyDensity, isLowDensity, isWideViewport } from './viewport.js';
-import { restrictedAreas } from './restrictions.js';
+import { restrictedAreas, formatRestrictedAreaPopup } from './restrictions.js';
 
 // Airport selection state, filled from /api/config on startup.
 let appConfig = { airports: [], default_airport: '', openaip_overlay: false };
@@ -116,6 +116,24 @@ function findAirport(identifier) {
     return appConfig.airports.find(airport => airport.identifier === identifier);
 }
 
+// isSafeWebsiteURL gates what an airfield's website link may point at. The value comes from
+// the operator's airports.json, which the embedded default is not attacker-controlled, but
+// FLUGWETTER_AIRPORTS_FILE lets it be replaced without a rebuild -- and validateAirports on
+// the server enforces the same rule, so this is defence in depth, not the only check.
+// Without it a "javascript:" URL sitting in that file would run in this page's origin the
+// moment the link was clicked.
+function isSafeWebsiteURL(value) {
+    if (!value) {
+        return false;
+    }
+    try {
+        const url = new URL(value);
+        return url.protocol === 'https:' || url.protocol === 'http:';
+    } catch (error) {
+        return false;
+    }
+}
+
 // initialAirportId resolves the airport to show first: an explicit ?airport= wins so links
 // are shareable, then the last choice made in this browser, then the backend default.
 // An identifier that is no longer configured falls back instead of erroring.
@@ -224,7 +242,7 @@ function updateAirportInfo(airport) {
         any = true;
     }
 
-    if (airport && airport.website) {
+    if (airport && isSafeWebsiteURL(airport.website)) {
         const website = document.createElement('p');
         website.className = 'airport-info-website';
         const link = document.createElement('a');
@@ -296,19 +314,34 @@ function drawRestrictedAreas() {
     });
 }
 
+// Built from nodes, not a template string, like airportPopup and updateAirportInfo below.
+// area.name and each window's lower/upper limit come from the DFS AUP briefing -- an
+// undocumented endpoint's regex-parsed HTML, not this project's own airports.json -- and
+// Leaflet's bindPopup assigns a string argument straight to innerHTML. A name or limit that
+// somehow carried markup through the AUP parser would otherwise render as markup here.
+//
+// The formatting itself -- the date/time text, the limits -- lives in
+// formatRestrictedAreaPopup in restrictions.js, kept free of the DOM so it is testable under
+// node --test; everything left here is textContent assignment, which cannot become a sink.
 function restrictedAreaPopup(area) {
-    const rows = area.windows.map(window => {
-        const from = new Date(window.from);
-        const to = new Date(window.to);
-        const day = from.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
-        const hhmm = t => `${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}`;
-        const limits = [window.lower, window.upper].filter(Boolean).join('–');
-        return `<li>${day} ${hhmm(from)}–${hhmm(to)}Z${limits ? ` · ${limits}` : ''}</li>`;
-    }).join('');
+    const formatted = formatRestrictedAreaPopup(area);
 
-    // UTC, because that is how the plan publishes them and how they are discussed on the
-    // radio -- the same reasoning as the model run label.
-    return `<strong>${area.name}</strong><ul class="edr-windows">${rows}</ul>`;
+    const content = document.createElement('div');
+
+    const heading = document.createElement('strong');
+    heading.textContent = formatted.name;
+    content.appendChild(heading);
+
+    const list = document.createElement('ul');
+    list.className = 'edr-windows';
+    formatted.lines.forEach(text => {
+        const item = document.createElement('li');
+        item.textContent = text;
+        list.appendChild(item);
+    });
+    content.appendChild(list);
+
+    return content;
 }
 
 function openAirportMap() {
@@ -389,9 +422,17 @@ function initAirportMap() {
     drawRestrictedAreas();
 
     appConfig.airports.forEach(airport => {
+        // A text node, not the bare string bindTooltip also accepts -- which Leaflet
+        // assigns to innerHTML. airport.identifier is normally just an ICAO code out of
+        // the trusted embedded airports.json, but FLUGWETTER_AIRPORTS_FILE lets an
+        // operator point it at a different file, and there is no reason for this label to
+        // be a markup sink even then.
+        const label = document.createElement('span');
+        label.textContent = airport.identifier;
+
         const marker = L.circleMarker([airport.latitude, airport.longitude], markerStyle(false))
             .addTo(airportMap)
-            .bindTooltip(airport.identifier, {
+            .bindTooltip(label, {
                 permanent: true,
                 direction: 'right',
                 className: 'airport-tooltip',

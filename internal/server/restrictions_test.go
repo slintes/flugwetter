@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -114,6 +115,61 @@ func TestParseAUP_SkipsAnAreaWithNoWindows(t *testing.T) {
 	}
 }
 
+// A data-part value that is not a real designator must be dropped rather than reaching the
+// payload -- it used to reach Leaflet's bindPopup as a plain string, which assigns to
+// innerHTML. The frontend no longer does that either (see restrictedAreaPopup in
+// airports.js), but the API itself should not emit the payload in the first place.
+func TestParseAUP_RejectsAnAreaWithAMalformedName(t *testing.T) {
+	for _, area := range parseAUP(aupFixture(t)) {
+		if area.Name == "<img src=x onerror=alert(1)>" || area.Name == "bad" {
+			t.Errorf("a malformed area name reached the parsed output: %q", area.Name)
+		}
+	}
+}
+
+// A limit value that is not GND, UNL, or an altitude/flight level is dropped rather than
+// passed through -- the window's times are still good data and must survive.
+func TestParseAUP_DropsJunkLimitsButKeepsTheWindow(t *testing.T) {
+	area := findArea(parseAUP(aupFixture(t)), "ED-R900")
+	if area == nil {
+		t.Fatal("ED-R900 was dropped, want it kept with its limits blanked")
+	}
+	if len(area.Windows) != 1 {
+		t.Fatalf("got %d windows, want 1", len(area.Windows))
+	}
+	if got := area.Windows[0]; got.Lower != "" || got.Upper != "" {
+		t.Errorf("window = %+v, want both limits blank", got)
+	}
+}
+
+func TestParseAUPWindow_AcceptsEveryRealLimitShape(t *testing.T) {
+	for _, limit := range []string{"GND", "UNL", "A050", "F100"} {
+		if !aupLimitValueRe.MatchString(limit) {
+			t.Errorf("aupLimitValueRe rejected %q, a real AUP limit value", limit)
+		}
+	}
+	for _, limit := range []string{"FOO", "", "A5", "AAAA", "<script>"} {
+		if aupLimitValueRe.MatchString(limit) {
+			t.Errorf("aupLimitValueRe accepted %q", limit)
+		}
+	}
+}
+
+func TestParseAUP_SkipsAnAreaWithAnOversizedPolygon(t *testing.T) {
+	var points []string
+	for i := 0; i < maxPolygonPoints+1; i++ {
+		points = append(points, "522607N0072010E")
+	}
+	page := `<table class="airspace" data-part="ED-R999" data-polygon="` + strings.Join(points, "-") + `">` +
+		`<thead><tr><th class="name">ED-R999</th></tr></thead><tbody><tr class="validity">` +
+		`<td>From <time datetime="2026-08-11T07:00Z">x</time> until <time datetime="2026-08-11T09:00Z">y</time></td>` +
+		`</tr></tbody></table>`
+
+	if area := findArea(parseAUP(page), "ED-R999"); area != nil {
+		t.Errorf("an area with %d polygon points was kept, want it dropped", len(area.Polygon))
+	}
+}
+
 func TestParseAUP_IgnoresTablesThatAreNotAirspaces(t *testing.T) {
 	for _, area := range parseAUP(aupFixture(t)) {
 		if area.Name == "" {
@@ -154,6 +210,18 @@ func TestParseAUPPolygon_SkipsUnreadablePoints(t *testing.T) {
 	}
 }
 
+// A panic mid-poll must not end the watcher goroutine for good -- it is recovered so the
+// next tick still runs.
+func TestPollRestrictionsOnce_RecoversAPanic(t *testing.T) {
+	stubAUP(t, func(context.Context, time.Time, time.Time) (string, error) {
+		panic("boom")
+	})
+
+	// The panic must not reach the test itself -- if it does, this test fails by crashing
+	// rather than by a normal assertion.
+	pollRestrictionsOnce(context.Background())
+}
+
 func TestRestrictions_PollReplacesTheSet(t *testing.T) {
 	page := aupFixture(t)
 	stubAUP(t, func(context.Context, time.Time, time.Time) (string, error) { return page, nil })
@@ -161,8 +229,8 @@ func TestRestrictions_PollReplacesTheSet(t *testing.T) {
 	restrictions.poll(context.Background())
 
 	areas, fetchedAt, degraded := restrictions.snapshot()
-	if len(areas) != 3 {
-		t.Fatalf("got %d areas, want 3", len(areas))
+	if len(areas) != 4 {
+		t.Fatalf("got %d areas, want 4", len(areas))
 	}
 	if fetchedAt.IsZero() {
 		t.Error("fetchedAt is zero after a successful poll")

@@ -177,6 +177,18 @@ func TestModelRuns_PartialFailureKeepsTheLastKnownRun(t *testing.T) {
 }
 
 // A document that parses but carries no run times is a shape change, not a run at the epoch.
+// A panic mid-poll must not end the watcher goroutine for good -- it is recovered so the
+// next tick still runs.
+func TestPollModelRunsOnce_RecoversAPanic(t *testing.T) {
+	stubModelRunMeta(t, func(context.Context, string) (*modelRunMeta, error) {
+		panic("boom")
+	})
+
+	// The panic must not reach the test itself -- if it does, this test fails by crashing
+	// rather than by a normal assertion.
+	pollModelRunsOnce(context.Background())
+}
+
 func TestFetchModelRunMeta_RejectsAMetaWithoutRunTimes(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

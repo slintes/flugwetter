@@ -186,15 +186,39 @@ type VfrGustWarning struct {
 type responseWriter struct {
 	http.ResponseWriter
 	statusCode int
+	// written is set on the first WriteHeader or Write, whichever comes first -- a plain
+	// Write with no explicit WriteHeader still commits a 200 and a body. The panic
+	// recovery in loggingMiddleware uses it to decide whether an error response can still
+	// be sent, or whether the handler already started one.
+	written bool
 }
 
 // WriteHeader captures the status code and calls the underlying ResponseWriter's WriteHeader
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
+	rw.written = true
 	rw.ResponseWriter.WriteHeader(code)
 }
 
-// loggingMiddleware logs information about each incoming request and its response status
+// Write marks the response as started before delegating, for the same reason WriteHeader
+// does -- a handler that never calls WriteHeader explicitly still commits the response on
+// its first Write.
+func (rw *responseWriter) Write(b []byte) (int, error) {
+	rw.written = true
+	return rw.ResponseWriter.Write(b)
+}
+
+// loggingMiddleware logs information about each incoming request and its response status,
+// and recovers a panic in the handler chain rather than letting it take the process down.
+//
+// net/http's own server already recovers per-connection, but it logs through the "log"
+// package rather than slog, so a panic was invisible in this server's structured output --
+// and it closes the connection with no response at all. Recovering here, inside the
+// logging middleware rather than as a separate outer layer, means the request line above is
+// always on record even when the handler panics, and a 500 is at least a real response --
+// except when gzipMiddleware's own deferred flush already committed an (empty) 200 during
+// the panic unwind, which happens first because it sits deeper in the call stack; the panic
+// is still logged either way, and the request never crashes the process.
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Log the request
@@ -206,8 +230,18 @@ func loggingMiddleware(next http.Handler) http.Handler {
 			statusCode:     http.StatusOK, // Default to 200 OK
 		}
 
-		// Call the next handler with our custom response writer
-		next.ServeHTTP(rw, r)
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					slog.Error("panic handling request",
+						"method", r.Method, "path", r.URL.Path, "panic", recovered)
+					if !rw.written {
+						http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
+					}
+				}
+			}()
+			next.ServeHTTP(rw, r)
+		}()
 
 		// Log the response status
 		slog.Debug("response", "status", rw.statusCode, "method", r.Method, "path", r.URL.Path)

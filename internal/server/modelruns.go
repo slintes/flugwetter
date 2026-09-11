@@ -226,12 +226,26 @@ func watchModelRuns(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if modelRuns.poll(ctx) {
-				cache.invalidateAll()
-				slog.Info("model runs advanced, refreshing the default airport",
-					"airport", defaultAirport.Identifier)
-				_, _ = GetWeatherData(ctx, defaultAirport)
-			}
+			pollModelRunsOnce(ctx)
 		}
+	}
+}
+
+// pollModelRunsOnce is one tick's work, pulled out of watchModelRuns so a panic can be
+// recovered without ending the poller for good. This is the only goroutine that would
+// otherwise take the whole process down with it -- an http.Handler panic is recovered per
+// request by loggingMiddleware, but nothing else catches one here.
+func pollModelRunsOnce(ctx context.Context) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.Error("panic polling model runs", "panic", recovered)
+		}
+	}()
+
+	if modelRuns.poll(ctx) {
+		cache.invalidateAll()
+		slog.Info("model runs advanced, refreshing the default airport",
+			"airport", defaultAirport.Identifier)
+		_, _ = GetWeatherData(ctx, defaultAirport)
 	}
 }

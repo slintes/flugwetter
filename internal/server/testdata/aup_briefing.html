@@ -7,10 +7,24 @@
     windows and the unparseable timestamp are all things the live endpoint does, and each
     one is a case the parser has to survive. The polygons are cut to a few points; the real
     ones run to hundreds.
+
+    Two more on top of that, both there for parseAUP's input validation rather than for
+    anything the live endpoint is known to send: an area whose data-part carries a markup
+    payload instead of a designator (this is what the frontend used to hand straight to
+    Leaflet's bindPopup, which assigns a string argument to innerHTML), and an area whose
+    altitude limits are neither a real value nor parseable as one.
 -->
 <div class="briefing">
 
 <table class="airspace" data-part="ED-R37A" data-polygon="522607N0072010E-522600N0072010E-522552N0072010E-522545N0072010E"><thead><tr><th class="name">ED-R37A</th></tr></thead><tbody><tr class="validity"><td>From <time datetime="2026-08-11T07:00Z">11 Aug 2026 07:00</time> until <time datetime="2026-08-11T15:00Z">11 Aug 2026 15:00</time> at Lower Limit GND to Upper Limit A050</td></tr></tbody></table>
+
+<!-- A markup payload in data-part instead of a designator. The attribute regex only excludes
+     a literal '"', so this is exactly what the endpoint's own HTML shape allows through. -->
+<table class="airspace" data-part="<img src=x onerror=alert(1)>" data-polygon="533000N0083000E-533000N0084000E"><thead><tr><th class="name">bad</th></tr></thead><tbody><tr class="validity"><td>From <time datetime="2026-08-11T07:00Z">11 Aug 2026 07:00</time> until <time datetime="2026-08-11T09:00Z">11 Aug 2026 09:00</time> at Lower Limit GND to Upper Limit A010</td></tr></tbody></table>
+
+<!-- A valid name, junk limits. The window itself -- the times -- is still good data and must
+     survive; only the two limit strings are dropped. -->
+<table class="airspace" data-part="ED-R900" data-polygon="533000N0083000E-533000N0084000E"><thead><tr><th class="name">ED-R900</th></tr></thead><tbody><tr class="validity"><td>From <time datetime="2026-08-11T07:00Z">11 Aug 2026 07:00</time> until <time datetime="2026-08-11T09:00Z">11 Aug 2026 09:00</time> at Lower Limit FOO to Upper Limit BAR</td></tr></tbody></table>
 
 <!-- The same area again, from the neighbouring FIR: one window it already has, one it does not. -->
 <table class="airspace" data-part="ED-R37A" data-polygon="522607N0072010E-522600N0072010E-522552N0072010E-522545N0072010E"><thead><tr><th class="name">ED-R37A</th></tr></thead><tbody><tr class="validity"><td>From <time datetime="2026-08-11T07:00Z">11 Aug 2026 07:00</time> until <time datetime="2026-08-11T15:00Z">11 Aug 2026 15:00</time> at Lower Limit GND to Upper Limit A050</td></tr><tr class="validity"><td>From <time datetime="2026-08-12T06:00Z">12 Aug 2026 06:00</time> until <time datetime="2026-08-12T14:00Z">12 Aug 2026 14:00</time> at Lower Limit A010 to Upper Limit F100</td></tr></tbody></table>

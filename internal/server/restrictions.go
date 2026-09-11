@@ -68,6 +68,15 @@ const (
 	// One failed poll is a blip. Two in a row is a pattern worth showing, the same
 	// threshold and for the same reason as the model-run poller.
 	restrictionsFailuresBeforeDegraded = 2
+
+	// maxAUPBodyBytes bounds the briefing response. A 21-day plan is ~190KB today; this is
+	// generous headroom rather than a number tuned to the current size.
+	maxAUPBodyBytes = 8 << 20 // 8 MiB
+
+	// maxPolygonPoints bounds one area's boundary. Real polygons run to a few hundred
+	// points at most (see the fixture's own comment); anything past this is treated as
+	// unparseable rather than handed to the map.
+	maxPolygonPoints = 2000
 )
 
 type restrictionTracker struct {
@@ -165,9 +174,12 @@ func fetchAUP(ctx context.Context, from, to time.Time) (string, error) {
 		return "", fmt.Errorf("AUP returned status code: %d", resp.StatusCode)
 	}
 
-	page, err := io.ReadAll(resp.Body)
+	page, err := io.ReadAll(io.LimitReader(resp.Body, maxAUPBodyBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+	if len(page) > maxAUPBodyBytes {
+		return "", fmt.Errorf("AUP response exceeded %d bytes", maxAUPBodyBytes)
 	}
 	return string(page), nil
 }
@@ -182,6 +194,18 @@ var (
 	aupTagRe      = regexp.MustCompile(`<[^>]*>`)
 	// 522607N0072010E -- degrees, minutes, seconds, hemisphere, for each of lat and lon.
 	aupPointRe = regexp.MustCompile(`^(\d{2})(\d{2})(\d{2})([NS])(\d{3})(\d{2})(\d{2})([EW])$`)
+
+	// aupAreaNameRe is the shape every real designator has -- "ED-R37A", "ED-D41",
+	// "ED-R112A" -- and the gate an area's name must pass before it reaches the payload.
+	// name comes straight out of a data-part="..." attribute matched as [^"]*, with no
+	// shape constraint of its own; this is what stops whatever that could be from becoming
+	// the name this server hands back to every client.
+	aupAreaNameRe = regexp.MustCompile(`^[A-Z]{2}-[A-Z][0-9A-Z-]{0,15}$`)
+
+	// aupLimitValueRe is the shape of a lower or upper limit: GND, UNL, or an altitude
+	// (A, meaning hundreds of feet) or flight level (F) followed by three digits. Anything
+	// else is dropped rather than passed through -- see parseAUPWindow.
+	aupLimitValueRe = regexp.MustCompile(`^(?:GND|UNL|[AF]\d{3})$`)
 )
 
 // parseAUP pulls the areas out of the briefing.
@@ -203,11 +227,21 @@ func parseAUP(page string) []RestrictedArea {
 				polygon = attr[2]
 			}
 		}
-		if name == "" {
+		// name is a raw data-part="..." attribute with no shape constraint of its own --
+		// this is what stops whatever that could be from becoming the area name this
+		// server hands back to every client, not just a check that one was present.
+		if !aupAreaNameRe.MatchString(name) {
 			continue
 		}
 
-		area := RestrictedArea{Name: name, Polygon: parseAUPPolygon(polygon)}
+		points := parseAUPPolygon(polygon)
+		if len(points) > maxPolygonPoints {
+			// Real polygons run to a few hundred points at most; this many is treated as
+			// unparseable rather than handed to the map.
+			continue
+		}
+
+		area := RestrictedArea{Name: name, Polygon: points}
 		for _, row := range aupValidityRe.FindAllStringSubmatch(body, -1) {
 			if window, ok := parseAUPWindow(row[1]); ok {
 				area.Windows = append(area.Windows, window)
@@ -251,7 +285,17 @@ func parseAUPWindow(row string) (RestrictionWindow, bool) {
 
 	window := RestrictionWindow{From: from, To: to}
 	if limits := aupLimitsRe.FindStringSubmatch(html.UnescapeString(aupTagRe.ReplaceAllString(row, " "))); limits != nil {
-		window.Lower, window.Upper = limits[1], limits[2]
+		// Each value is checked against its own shape (aupLimitValueRe) rather than
+		// passed through once the surrounding "Lower Limit ... to Upper Limit ..." text
+		// is found -- (\S+) itself accepts anything with no embedded whitespace. A value
+		// that fails is left empty (both fields are optional on the wire) instead of
+		// dropping the window it belongs to; the times are still good data.
+		if aupLimitValueRe.MatchString(limits[1]) {
+			window.Lower = limits[1]
+		}
+		if aupLimitValueRe.MatchString(limits[2]) {
+			window.Upper = limits[2]
+		}
 	}
 	return window, true
 }
@@ -302,7 +346,22 @@ func watchRestrictions(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			restrictions.poll(ctx)
+			pollRestrictionsOnce(ctx)
 		}
 	}
+}
+
+// pollRestrictionsOnce is one tick's work, pulled out of watchRestrictions so a panic can be
+// recovered without ending the poller for good. parseAUP runs eight regexes over one
+// undocumented endpoint's HTML on this goroutine; nothing found there panics today, but
+// nothing here depends on that staying true either -- see the identical reasoning in
+// pollModelRunsOnce.
+func pollRestrictionsOnce(ctx context.Context) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.Error("panic polling the airspace use plan", "panic", recovered)
+		}
+	}()
+
+	restrictions.poll(ctx)
 }

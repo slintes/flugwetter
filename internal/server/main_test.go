@@ -185,6 +185,39 @@ func TestBuildAPIURL_TimezoneIsGMT(t *testing.T) {
 	}
 }
 
+// A panicking handler must not take the connection -- or the process -- down with it: the
+// panic is recovered, logged, and a 500 is still sent when nothing was written yet.
+func TestLoggingMiddleware_RecoversAPanic(t *testing.T) {
+	handler := loggingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("boom")
+	}))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+}
+
+// A panic after the handler has already started its response must not attempt a second
+// WriteHeader -- the recovered response is only sent when nothing was written yet.
+func TestLoggingMiddleware_RecoversAPanicAfterWriting(t *testing.T) {
+	handler := loggingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		panic("boom after headers")
+	}))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	// The panic must not have crashed the test process (it would have, without recover),
+	// and the status already sent must be left alone rather than overwritten.
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d (the status already sent before the panic)", rec.Code, http.StatusOK)
+	}
+}
+
 func TestLoggingMiddlewareCapturesStatus(t *testing.T) {
 	handler := loggingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nope", http.StatusTeapot)

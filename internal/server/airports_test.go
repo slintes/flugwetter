@@ -206,6 +206,18 @@ func TestValidateAirports(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "safe website URL",
+			list: []Airport{{Identifier: "EDWN", Name: "x", RunwayHeadings: []float64{50}, Website: "https://example.com"}},
+		},
+		{
+			// The frontend renders this field as a link's href. FLUGWETTER_AIRPORTS_FILE
+			// lets it be replaced without a rebuild, so a bad scheme here must be
+			// rejected at load time rather than reaching a browser.
+			name:    "javascript scheme website URL",
+			list:    []Airport{{Identifier: "EDWN", Name: "x", RunwayHeadings: []float64{50}, Website: "javascript:alert(1)"}},
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -218,6 +230,30 @@ func TestValidateAirports(t *testing.T) {
 				t.Errorf("got error %v, want none", err)
 			}
 		})
+	}
+}
+
+func TestIsSafeWebsiteURL(t *testing.T) {
+	tests := []struct {
+		url  string
+		want bool
+	}{
+		{"https://example.com", true},
+		{"http://example.com", true},
+		{"javascript:alert(1)", false},
+		{"data:text/html,<script>alert(1)</script>", false},
+		{"", false},
+		{"not a url at all", false},
+		// A scheme-relative URL parses with Scheme == "", which is neither https nor
+		// http -- and its meaning depends on the page it is embedded in, which this
+		// project does not control from the server side.
+		{"//example.com", false},
+	}
+
+	for _, tc := range tests {
+		if got := isSafeWebsiteURL(tc.url); got != tc.want {
+			t.Errorf("isSafeWebsiteURL(%q) = %v, want %v", tc.url, got, tc.want)
+		}
 	}
 }
 
