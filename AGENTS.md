@@ -1,6 +1,7 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents when working with code in this repository.
+Claude Code reads it via the `@AGENTS.md` import in `CLAUDE.md`.
 
 ## Project
 
@@ -38,7 +39,7 @@ internal/web/jstest/         frontend tests, deliberately outside the embedded t
 
 ## Architecture
 
-See `internal/server/CLAUDE.md` for the backend (server.go, airports.go, tiles.go, weather.go, modelruns.go, restrictions.go, vfr.go) and `internal/web/frontend/CLAUDE.md` for the frontend (the JS modules, styles.css, weather-icons.js) — both load automatically for a session working under those directories.
+See `internal/server/AGENTS.md` for the backend (server.go, airports.go, tiles.go, weather.go, modelruns.go, restrictions.go, vfr.go) and `internal/web/frontend/AGENTS.md` for the frontend (the JS modules, styles.css, weather-icons.js) — both load automatically for a session working under those directories (Claude Code via the same `@AGENTS.md` import pattern, in each directory's own `CLAUDE.md`).
 
 ## Units & conventions
 

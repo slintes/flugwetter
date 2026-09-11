@@ -1,9 +1,10 @@
 # internal/web/frontend
 
-This file provides guidance to Claude Code (claude.ai/code) when working with files in this
-directory. It loads only for sessions that touch `internal/web/frontend/` — see the project
-root `CLAUDE.md` for everything else, and `internal/web/frontend/js/README.md` for the
-module-by-module dependency map.
+This file provides guidance to coding agents when working with files in this directory. It
+loads only for sessions that touch `internal/web/frontend/` — see the project root
+`AGENTS.md` for everything else, and `internal/web/frontend/js/README.md` for the
+module-by-module dependency map. Claude Code reads it via the `@AGENTS.md` import in this
+directory's own `CLAUDE.md`.
 
 **`internal/web/frontend/js/`** — fourteen native ES modules, no bundler and no build step. `main.js` bootstraps; `charts.js` owns the four instances behind a mutable `charts` registry (`charts.vfr`, `.temperature`, `.cloud`, `.wind`) that `api.js` and `panzoom.js` read; `plugins.js` holds every drawing plugin and is imported for its registration side effect before any chart is constructed.
 

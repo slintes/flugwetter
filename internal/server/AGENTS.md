@@ -1,8 +1,9 @@
 # internal/server
 
-This file provides guidance to Claude Code (claude.ai/code) when working with files in this
-directory. It loads only for sessions that touch `internal/server/` — see the project root
-`CLAUDE.md` for everything else.
+This file provides guidance to coding agents when working with files in this directory. It
+loads only for sessions that touch `internal/server/` — see the project root `AGENTS.md` for
+everything else. Claude Code reads it via the `@AGENTS.md` import in this directory's own
+`CLAUDE.md`.
 
 **`internal/server/server.go`** — stdlib `http.ServeMux` (`/`, `/api/config`, `/api/weather`, `/api/status`, tile proxy, `/static/*`), logging/gzip/security middleware, and all wire-format structs (`ProcessedWeatherData` and children). Adding a field to the API means editing these structs plus the producer in `weather.go` and the consumer in `js/api.js`.
 
