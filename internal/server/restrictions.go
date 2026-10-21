@@ -65,9 +65,8 @@ const (
 	// business. Roughly a third of the volume.
 	restrictionsUpperLimit = "A080"
 
-	// One failed poll is a blip. Two in a row is a pattern worth showing, the same
-	// threshold and for the same reason as the model-run poller.
-	restrictionsFailuresBeforeDegraded = 2
+	// Warn on the first failed refresh while continuing to serve the last known plan.
+	restrictionsFailuresBeforeDegraded = 1
 
 	// maxAUPBodyBytes bounds the briefing response. A 21-day plan is ~190KB today; this is
 	// generous headroom rather than a number tuned to the current size.
@@ -126,6 +125,15 @@ func (t *restrictionTracker) windowsFor(name string) []RestrictionWindow {
 func (t *restrictionTracker) poll(ctx context.Context) {
 	now := time.Now().UTC()
 	body, err := fetchAUPFn(ctx, now, now.AddDate(0, 0, restrictionsHorizonDays))
+	var areas []RestrictedArea
+	if err == nil {
+		areas = parseAUP(body)
+		// DFS can return an error page with HTTP 200. An empty multi-day plan is
+		// not reliable evidence of inactivity: keep the last valid plan instead.
+		if len(areas) == 0 {
+			err = fmt.Errorf("AUP response contained no usable airspace activity")
+		}
+	}
 	if err != nil {
 		t.mutex.Lock()
 		t.consecutiveFails++
@@ -134,8 +142,6 @@ func (t *restrictionTracker) poll(ctx context.Context) {
 		slog.Warn("airspace use plan unavailable", "error", redactedError(err), "consecutive", fails)
 		return
 	}
-
-	areas := parseAUP(body)
 
 	t.mutex.Lock()
 	defer t.mutex.Unlock()

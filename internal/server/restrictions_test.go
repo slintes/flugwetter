@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -271,8 +272,8 @@ func TestRestrictions_FailedPollKeepsTheLastKnownSetAndDegrades(t *testing.T) {
 	if !stillFetchedAt.Equal(fetchedAt) {
 		t.Error("fetchedAt moved on a failed poll — it dates the data, not the attempt")
 	}
-	if degraded {
-		t.Error("degraded = true after a single failure — one blip is not a pattern")
+	if !degraded {
+		t.Error("degraded = false after the first failure, want true")
 	}
 
 	restrictions.poll(context.Background())
@@ -284,6 +285,35 @@ func TestRestrictions_FailedPollKeepsTheLastKnownSetAndDegrades(t *testing.T) {
 	restrictions.poll(context.Background())
 	if _, _, degraded := restrictions.snapshot(); degraded {
 		t.Error("degraded = true after a successful poll, want false")
+	}
+}
+
+func TestRestrictions_EmptyOrErrorPageKeepsLastKnownPlan(t *testing.T) {
+	for _, invalid := range []string{
+		`<!DOCTYPE html><tt class="result error"><span>ERROR - AUP BRIEFING - Sorry briefing not available, please try again later!</span></tt>`,
+		"",
+		"<html>Unexpected upstream response</html>",
+	} {
+		t.Run(invalid, func(t *testing.T) {
+			page := aupFixture(t)
+			stubAUP(t, func(context.Context, time.Time, time.Time) (string, error) { return page, nil })
+			restrictions.poll(context.Background())
+			before, fetchedAt, _ := restrictions.snapshot()
+			page = invalid
+			restrictions.poll(context.Background())
+			after, stillFetchedAt, degraded := restrictions.snapshot()
+			if !reflect.DeepEqual(after, before) || !stillFetchedAt.Equal(fetchedAt) {
+				t.Error("invalid response replaced the cached plan or its timestamp")
+			}
+			if !degraded {
+				t.Error("first invalid response did not mark the plan degraded")
+			}
+			page = aupFixture(t)
+			restrictions.poll(context.Background())
+			if _, _, degraded := restrictions.snapshot(); degraded {
+				t.Error("successful refresh did not clear degraded state")
+			}
+		})
 	}
 }
 
