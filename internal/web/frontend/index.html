@@ -55,6 +55,11 @@
             <div class="error" id="error" role="alert" style="display: none;">
                 <p id="errorMessage" hidden>Failed to load weather data. Please try again later.</p>
                 <button type="button" id="retryButton" hidden>Retry</button>
+                <p class="degraded" id="restrictionsMessage" hidden>
+                    EDR activity information is unavailable or may be out of date. Map activity
+                    polygons and ED-R37A chart shading may be missing or outdated; this does not
+                    mean an area is inactive. Check the DFS briefing, AIP and NOTAM before flying.
+                </p>
                 <p class="degraded" id="degradedMessage" hidden>
                     Cannot reach the weather model schedule, so new forecasts may take up to
                     an hour to appear. The data shown is still valid.

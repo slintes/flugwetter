@@ -33,6 +33,7 @@ export async function loadRestrictions() {
             degraded: Boolean(data.degraded),
         };
     } catch (error) {
+        cached = { ...cached, degraded: true };
         console.error('Error loading airspace restrictions:', error);
     }
     return cached;
@@ -44,6 +45,12 @@ export function restrictedAreas() {
 
 export function restrictionsDegraded() {
     return cached.degraded;
+}
+
+// An empty plan is not evidence that no areas are active. In particular, DFS can
+// return an error page with HTTP 200 that the backend currently parses as empty.
+export function restrictionsUnavailable(data = cached) {
+    return Boolean(data.degraded) || !data.fetchedAt || !data.areas.length;
 }
 
 // windowsFor returns one area's activity windows, or an empty list. The wire format is

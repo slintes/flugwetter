@@ -6,7 +6,7 @@ import { getAppConfig, getCurrentAirportId, isHomeAirport } from './airports.js'
 import { toEpochMs } from './time.js';
 import { shouldReload, shouldReloadPage, latestModelRun, formatModelRun } from './status.js';
 import { setBands } from './bands.js';
-import { loadRestrictions, windowsFor, HOME_AREA } from './restrictions.js';
+import { loadRestrictions, restrictionsUnavailable, windowsFor, HOME_AREA } from './restrictions.js';
 
 // When the data on screen was last replaced.
 let lastLoadedAt = Date.now();
@@ -15,13 +15,12 @@ let lastLoadedAt = Date.now();
 // this, so it is what makes a reload conditional rather than periodic.
 let renderedRun = null;
 
-// The two conditions the error area can be in. They are tracked separately because they are
-// different events: one means there is no forecast, the other means there is one but the
-// mechanism that keeps it current has stopped working.
+// Forecast loading and model-run detection have independent failure states.
+// EDR availability is read separately from the restrictions cache.
 let loadFailed = false;
 let runsDegraded = false;
 
-// renderErrorArea shows the box if either condition holds, and each message independently.
+// renderErrorArea shows the box if any condition holds, and each message independently.
 //
 // The Retry button belongs only to the load failure. Retrying does nothing for a backend
 // poller that cannot reach Open-Meteo's metadata, and offering a button that cannot help is
@@ -30,7 +29,9 @@ function renderErrorArea() {
     document.getElementById('errorMessage').hidden = !loadFailed;
     document.getElementById('retryButton').hidden = !loadFailed;
     document.getElementById('degradedMessage').hidden = !runsDegraded;
-    document.getElementById('error').style.display = loadFailed || runsDegraded ? 'block' : 'none';
+    const edrUnavailable = restrictionsUnavailable();
+    document.getElementById('restrictionsMessage').hidden = !edrUnavailable;
+    document.getElementById('error').style.display = loadFailed || runsDegraded || edrUnavailable ? 'block' : 'none';
 }
 
 // The scrim is delayed rather than shown immediately: the backend answers a warm cache in
@@ -66,6 +67,7 @@ export async function loadWeatherData() {
         // Both in flight at once: the airspace plan is small and independent, and its
         // failure is handled inside loadRestrictions rather than failing the load.
         const [response] = await Promise.all([fetch(url), loadRestrictions()]);
+        renderErrorArea();
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
