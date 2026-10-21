@@ -15,6 +15,41 @@ import (
 	"time"
 )
 
+type tileRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f tileRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestFetchOpenAIPTileUsesDocumentedAuthHeader(t *testing.T) {
+	const key = "test-openaip-key"
+	t.Setenv(openAIPKeyEnv, key)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("x-openaip-api-key"); got != key {
+			t.Errorf("authentication header = %q, want configured key", got)
+		}
+		if r.Header.Get("x-openaip-client-id") != "" || r.URL.RawQuery != "" {
+			t.Error("request uses obsolete header or query credentials")
+		}
+		w.Write([]byte("tile"))
+	}))
+	defer upstream.Close()
+	base, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := httpClient
+	httpClient = &http.Client{Transport: tileRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		r.URL.Scheme, r.URL.Host = base.Scheme, base.Host
+		return http.DefaultTransport.RoundTrip(r)
+	})}
+	t.Cleanup(func() { httpClient = previous })
+	body, noContent, err := fetchOpenAIPTile(context.Background(), 8, 133, 83)
+	if err != nil || noContent || string(body) != "tile" {
+		t.Fatalf("fetch = %q, %v, %v; want tile, false, nil", body, noContent, err)
+	}
+}
+
 func TestServeOpenAIPTileRejectsBadCoordinates(t *testing.T) {
 	// A valid key would let a bad request through to openAIP; these must be rejected here.
 	t.Setenv(openAIPKeyEnv, "test-key")

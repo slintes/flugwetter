@@ -30,11 +30,9 @@ const (
 	// the full request URL -- query string included -- and that error is what gets logged.
 	// A key in the URL is one upstream timeout away from sitting in this server's log, which
 	// the deploy skill has an operator reading routinely. A key in a header is never in that
-	// URL, so it is never in that log line either. Confirmed against the live endpoint during
-	// review: a request with the header but no apiKey= gets the same
-	// "No authenticated user found" 403 as one with neither, meaning the header is read as
-	// the credential rather than silently ignored.
-	openAIPKeyHeader = "x-openaip-client-id"
+	// URL, so it is never in that log line either. The Tiles API documents x-openaip-api-key;
+	// x-openaip-client-id does not authenticate tile requests.
+	openAIPKeyHeader = "x-openaip-api-key"
 	// tileCacheTTL is generous on purpose: aeronautical data changes on AIRAC cycles,
 	// not by the hour, and openAIP asks clients to cache to stay inside its rate limits.
 	tileCacheTTL = 24 * time.Hour
