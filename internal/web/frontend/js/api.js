@@ -4,6 +4,7 @@ import { charts } from './charts.js';
 import { applyInitialZoomOnce } from './panzoom.js';
 import { getAppConfig, getCurrentAirportId, isHomeAirport } from './airports.js';
 import { toEpochMs } from './time.js';
+import { VFR_BADGE_Y_FRACTION } from './viewport.js';
 import { shouldReload, shouldReloadPage, latestModelRun, formatModelRun } from './status.js';
 import { setBands } from './bands.js';
 import { loadRestrictions, restrictionsUnavailable, windowsFor, HOME_AREA } from './restrictions.js';
@@ -310,12 +311,12 @@ export function updateCharts(data) {
         data.vfr_data.forEach(timePoint => {
             const timeValue = toEpochMs(timePoint.time);
 
-            // y is unused for vertical placement -- the vfrText plugin draws every badge
-            // at a fixed row -- but Chart.js still wants a numeric y to lay the dataset
-            // out, so 0/1 stands in for "not scored"/"scored" the same way it always has.
+            // The plugin draws every badge 65% down the chart area. With a 0..1 y
+            // scale, 0.35 puts the Chart.js point at that same row, so its tooltip
+            // points at the badge rather than the top or bottom of the chart.
             vfrData.push({
                 x: timeValue,
-                y: timePoint.rating ? 1 : 0,
+                y: 1 - VFR_BADGE_Y_FRACTION,
                 rating: timePoint.rating, // "" => not scored at all
                 weatherCode: timePoint.weather_code, // Include weather code for icon display
                 visibilityKnown: timePoint.visibility_known, // false => rating is an estimate

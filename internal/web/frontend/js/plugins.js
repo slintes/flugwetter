@@ -9,8 +9,9 @@
 
 import { weatherCodeToIcon } from './weather-icons.js';
 import { barbComponents, isCalm } from './barbs.js';
-import { axisWidths, isNarrowViewport, vfrMetrics, tooltipFont } from './viewport.js';
+import { axisWidths, isNarrowViewport, vfrMetrics, tooltipFont, VFR_BADGE_Y_FRACTION } from './viewport.js';
 import { bands, visibleBands, NIGHT_FILL, TWILIGHT_FILL, DAY_FILL, RESTRICTED_FILL } from './bands.js';
+import { visibleVfrIndices } from './vfr-visible.js';
 
 // Cache for weather icons
 const weatherIconCache = {};
@@ -78,6 +79,32 @@ Chart.Interaction.modes.timeNearest = function(chart, e, options, useFinalPositi
     });
 
     return items;
+};
+
+// Only select badges that vfrText actually drew. At wide zoom levels there may be
+// several hourly points between two visible badges, but they have no visible target.
+Chart.Interaction.modes.vfrVisible = function(chart, e) {
+    const position = Chart.helpers.getRelativePosition(e, chart);
+    const area = chart.chartArea;
+    if (position.x < area.left || position.x > area.right ||
+        position.y < area.top || position.y > area.bottom) return [];
+
+    const meta = chart.getDatasetMeta(0);
+    if (!chart.isDatasetVisible(0)) return [];
+    const data = chart.data.datasets[0].data;
+    const indices = visibleVfrIndices(data, x => chart.scales.x.getPixelForValue(x),
+        area.left, area.right, vfrMetrics().badge.width);
+    let best = null, bestDistance = Infinity;
+    for (const i of indices) {
+        const element = meta.data[i];
+        if (!element || element.skip) continue;
+        const distance = Math.abs(chart.scales.x.getPixelForValue(data[i].x) - position.x);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = {element, datasetIndex: 0, index: i};
+        }
+    }
+    return best ? [best] : [];
 };
 
 // responsiveAxes runs before every layout, which is what makes a resize across the
@@ -369,35 +396,20 @@ Chart.register({
             ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
             ctx.clip();
             
-            // Badges are opaque rectangles painted left to right, so two drawn closer
-            // together than one badge-width apart do not just look crowded the way the
-            // percentages this replaced did -- the later one's fill paints over part of
-            // the earlier one's letter. previousBadgeRight tracks where the last badge
-            // ended, and a badge that would start before that is skipped rather than
-            // corrupting its neighbour. This only bites when a preset zoom (the 6h/12h/...
-            // buttons) packs more hours in than the plot can actually fit; the computed
-            // initial zoom already keeps clear of it.
-            let previousBadgeRight = -Infinity;
-
+            // The same selection is used by the interaction mode, so a skipped badge
+            // cannot still supply the tooltip for a neighboring visible badge.
             chart.data.datasets.forEach((dataset, datasetIndex) => {
                 if (dataset.label === 'VFR Probability') {
+                    const visible = new Set(visibleVfrIndices(dataset.data,
+                        x => chart.scales.x.getPixelForValue(x), chartArea.left, chartArea.right,
+                        metrics.badge.width));
                     dataset.data.forEach((point, index) => {
+                        if (!visible.has(index)) return;
                         if (point && point.rating !== undefined) {
                             
                             const xPos = chart.scales.x.getPixelForValue(point.x);
-                            const yPos = chartArea.top + (chartArea.bottom - chartArea.top) * 0.65;
+                            const yPos = chartArea.top + (chartArea.bottom - chartArea.top) * VFR_BADGE_Y_FRACTION;
                             
-                            // Skip if outside visible area
-                            if (xPos < chartArea.left || xPos > chartArea.right) {
-                                return;
-                            }
-
-                            const badgeHalfWidth = metrics.badge.width / 2;
-                            if (xPos - badgeHalfWidth < previousBadgeRight) {
-                                return;
-                            }
-                            previousBadgeRight = xPos + badgeHalfWidth;
-
                             // Three presentations, in order of precedence:
                             //   no rating      no score at all -> grey dash, no badge: a
                             //                  colored one would claim a verdict that was

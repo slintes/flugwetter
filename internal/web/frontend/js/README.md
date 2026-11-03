@@ -8,7 +8,7 @@ Native ES modules. No bundler, no build step, no dependencies — `index.html` l
 | `main.js` | Bootstrap. The only file that wires anything together. |
 | `api.js` | Fetching the forecast, mapping the payload into chart points, auto-refresh. |
 | `charts.js` | The shared time-axis config, the four chart constructors, the `charts` registry. |
-| `plugins.js` | Every custom Chart.js plugin, plus `drawWindBarb` and the `timeNearest` interaction mode. |
+| `plugins.js` | Every custom Chart.js plugin, plus `drawWindBarb` and the `timeNearest` and `vfrVisible` interaction modes. |
 | `panzoom.js` | Hand-rolled pan/zoom, cross-chart sync, the initial range. |
 | `airports.js` | The picker, the shareable `?airport=` URL, the Leaflet map. |
 | `viewport.js` | Breakpoints, axis widths, VFR metrics, display density. |
@@ -18,6 +18,7 @@ Native ES modules. No bundler, no build step, no dependencies — `index.html` l
 | `bands.js` | The shaded bands behind the charts — night, civil twilight, ED-R activity, the home field's hours — and clipping them to what is on screen. |
 | `restrictions.js` | The airspace use plan: when restricted areas are active, for the charts and the map. |
 | `vfr-breakdown.js` | Formats the VFR rating's breakdown for the tooltip: what each factor was, and how it rated. |
+| `vfr-visible.js` | Selects the non-overlapping VFR badges shared by drawing and tooltip interaction. |
 | `weather-icons.js` | WMO code → icon filename, including the `-night` variants. |
 
 ## Two dependency rules
@@ -26,7 +27,7 @@ Native ES modules. No bundler, no build step, no dependencies — `index.html` l
 loader reads the picker's state; having each import the other would make them mutually
 dependent. `main.js` passes the reload in instead.
 
-**`viewport.js`, `barbs.js`, `time.js`, `vfr-breakdown.js`, `status.js`, `bands.js` and
+**`viewport.js`, `barbs.js`, `time.js`, `vfr-breakdown.js`, `vfr-visible.js`, `status.js`, `bands.js` and
 `restrictions.js` must not import Chart.js or touch the DOM at load time.** That is what lets `internal/web/jstest/` run them under `node --test`. The
 `responsiveAxes` plugin lives in `plugins.js` rather than `viewport.js` for exactly this
 reason.

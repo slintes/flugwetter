@@ -96,7 +96,7 @@ export function initializeCharts() {
             maintainAspectRatio: false,
             interaction: {
                 intersect: false,
-                mode: 'index'
+                mode: 'vfrVisible'
             },
             events: ['mousedown', 'mousemove', 'mouseup', 'click', 'mouseover', 'mouseout', 'wheel'],
             // No visible y axis here, so the space the other charts give their axes has to
@@ -120,6 +120,9 @@ export function initializeCharts() {
                     display: false // No legend needed
                 },
                 tooltip: {
+                    // The text changes immediately when the hovered hour changes. Animating
+                    // the caret leaves it pointing at the previous badge in the meantime.
+                    animations: false,
                     // No colour swatch. It indents every line but is not counted when
                     // Chart.js sizes the box, so the longest line runs past the right edge
                     // and loses its last character -- which is the cost, the part worth

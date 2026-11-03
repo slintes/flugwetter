@@ -56,6 +56,9 @@ export function axisWidths() {
 // drift apart again.
 export const pinAxisWidth = side => scale => { scale.width = axisWidths()[side]; };
 
+// Shared by the badge drawing and its invisible Chart.js point (the tooltip anchor).
+export const VFR_BADGE_Y_FRACTION = 0.65;
+
 // The VFR chart's weather icons and rating badges, which are drawn by the vfrText plugin
 // rather than by Chart.js. At full size one hour needs 56px, and a phone's plot area cannot
 // give that to even one hour, so they shrink with the axes.
