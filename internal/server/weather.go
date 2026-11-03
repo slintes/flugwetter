@@ -200,6 +200,7 @@ type cacheEntry struct {
 // WeatherCache manages cached weather data, one entry per airport identifier.
 type WeatherCache struct {
 	entries map[string]*cacheEntry
+	epoch   uint64 // prevents an older in-flight fetch from undoing a scheduled refresh
 	mutex   sync.RWMutex
 }
 
@@ -256,6 +257,7 @@ func (c *WeatherCache) invalidateAll() {
 	defer c.mutex.Unlock()
 
 	clear(c.entries)
+	c.epoch++
 }
 
 // cachedEntry returns the stored entry for an airport regardless of its age.
@@ -298,6 +300,12 @@ func fetchAndCacheWeatherData(ctx context.Context, airport Airport) (*ProcessedW
 // one that has not yet stored its result may still overlap; the double-check below makes the
 // loser discard its result rather than overwrite a fresher entry.
 func fetchAndCacheWeatherDataOnce(ctx context.Context, airport Airport) (*ProcessedWeatherData, error) {
+	// Capture both the cache generation and settled metadata before the upstream request.
+	// If a scheduled refresh completes in flight, retry instead of restoring older data.
+	cache.mutex.RLock()
+	epoch := cache.epoch
+	cache.mutex.RUnlock()
+	runs := modelRuns.settledRuns(time.Now())
 	slog.Info("fetching fresh weather data", "airport", airport.Identifier)
 
 	processedData, err := fetchWeatherFn(ctx, airport)
@@ -320,7 +328,19 @@ func fetchAndCacheWeatherDataOnce(ctx context.Context, airport Airport) (*Proces
 		return nil, err
 	}
 
+	// Never mutate a payload that a caller or test double may still hold.
+	copyData := *processedData
+	copyData.ModelRuns = runs
+	processedData = &copyData
 	cache.mutex.Lock()
+	if epoch != cache.epoch {
+		entry, ok := cache.entries[airport.Identifier]
+		cache.mutex.Unlock()
+		if ok {
+			return entry.data, nil
+		}
+		return fetchAndCacheWeatherDataOnce(ctx, airport)
+	}
 	defer cache.mutex.Unlock()
 
 	// Another goroutine may have stored a fresher entry while this fetch was in flight.
@@ -336,6 +356,27 @@ func fetchAndCacheWeatherDataOnce(ctx context.Context, airport Airport) (*Proces
 	slog.Info("cached weather data", "airport", airport.Identifier, "points", len(processedData.TemperatureData))
 
 	return processedData, nil
+}
+
+// refreshDefaultForecast keeps the old cache usable until a settled forecast succeeds.
+// Only then does it atomically invalidate other airports and publish the new default.
+func refreshDefaultForecast(ctx context.Context) error {
+	runs := modelRuns.settledRuns(time.Now())
+	slog.Info("refreshing default airport after model synchronization", "airport", defaultAirport.Identifier)
+	data, err := fetchWeatherFn(ctx, defaultAirport)
+	if err != nil {
+		return err
+	}
+	copyData := *data
+	copyData.ModelRuns = runs
+	data = &copyData
+	cache.mutex.Lock()
+	defer cache.mutex.Unlock()
+	clear(cache.entries)
+	cache.epoch++
+	cache.entries[defaultAirport.Identifier] = &cacheEntry{data: data, timestamp: data.GeneratedAt}
+	slog.Info("cached weather data", "airport", defaultAirport.Identifier, "points", len(data.TemperatureData))
+	return nil
 }
 
 // fetchWeatherFn indirects fetchWeather so tests can stub the network call, as
@@ -557,11 +598,9 @@ func gustWarning(windGusts, crosswindGusts float64) bool {
 }
 
 func processWeatherData(ctx context.Context, apiResponse *WeatherAPIResponse, airport Airport) *ProcessedWeatherData {
-	// The runs are stamped here rather than at serve time because they describe *this*
-	// data: they are the provenance of the payload, and a cached entry must keep the runs
-	// it was built from even after newer ones appear. It also keeps the cached payload
-	// immutable, which is what lets it be shared between goroutines without copying.
-	runs, _ := modelRuns.snapshot()
+	// The request path replaces this snapshot with settled metadata captured before the
+	// upstream fetch. Direct processing callers still get a conservative summary.
+	runs := modelRuns.settledRuns(time.Now())
 
 	processed := &ProcessedWeatherData{
 		TemperatureData: make([]TemperaturePoint, 0),

@@ -15,14 +15,9 @@ import (
 // ICON-D2 RUC runs hourly, ICON-D2 and ICON-EU every three hours, and ICON global every
 // six. Polling metadata rather than the full forecast lets us react to each run cheaply.
 //
-// Open-Meteo publishes each model's run times at a small metadata document -- 598 bytes
-// against 63.7 KB for the forecast itself. Polling that instead turns "refetch every 15
-// minutes" into "refetch when there is something new", and gives the frontend a timestamp
-// that means something: the forecast's own age rather than the age of our copy of it.
-//
-// These URLs are not part of Open-Meteo's documented v1 surface, so everything here is
-// built to degrade: a failure keeps the last known runs, leaves the cache alone, and lets
-// the backstop TTL in weather.go do what the clock used to do.
+// Open-Meteo's metadata API is small compared with the forecast. It recommends waiting
+// ten minutes after availability because its redundant servers synchronize asynchronously.
+// A failed poll retains the last known runs and the cache backstop remains available.
 
 // Tracked models behind `models=icon_seamless`. RUC supplies the near term, D2 extends
 // it, and EU and global cover the tail. Open-Meteo also uses other datasets; these run
@@ -41,7 +36,9 @@ const rucModelName = "icon_d2_ruc"
 
 const (
 	// Poll frequently enough to notice the hourly RUC run without fetching the forecast.
-	modelRunPollInterval = 15 * time.Minute
+	modelRunPollInterval = 5 * time.Minute
+	modelRunSettleDelay  = 10 * time.Minute
+	modelRunRetryDelay   = 5 * time.Minute
 
 	// One failed poll is a blip -- a transient DNS or TLS error would otherwise flap the
 	// warning on and off. Two in a row is a pattern worth showing.
@@ -94,35 +91,73 @@ func (t *modelRunTracker) snapshot() (runs []ModelRun, degraded bool) {
 		t.rucConsecutiveFails >= modelRunFailuresBeforeDegraded
 }
 
-// latestInitializedAt returns the newest tracked initialization time. It is a summary,
-// not the provenance of every hour or variable in the blended forecast.
-func (t *modelRunTracker) latestInitializedAt() time.Time {
-	t.mutex.RLock()
-	defer t.mutex.RUnlock()
-
-	var latest time.Time
-	for _, run := range t.runs {
-		if run.InitializedAt.After(latest) {
-			latest = run.InitializedAt
+// settledRuns returns only metadata old enough to have propagated. While a newer run is
+// pending, retain the previous settled run from the cached forecast where available.
+// Capture this before a request: metadata observed during it cannot describe the result.
+func (t *modelRunTracker) settledRuns(now time.Time) []ModelRun {
+	runs, _ := t.snapshot()
+	previous := make(map[string]ModelRun)
+	if entry, ok := cachedEntry(defaultAirport.Identifier); ok {
+		for _, run := range entry.data.ModelRuns {
+			previous[run.Model] = run
 		}
 	}
-	return latest
+	settled := make([]ModelRun, 0, len(runs))
+	for _, run := range runs {
+		if now.Before(run.AvailableAt.Add(modelRunSettleDelay)) {
+			old, ok := previous[run.Model]
+			if !ok || now.Before(old.AvailableAt.Add(modelRunSettleDelay)) {
+				continue
+			}
+			run = old
+		}
+		settled = append(settled, run)
+	}
+	return settled
 }
 
-// rucAvailability returns zero if the latest RUC poll failed, even if an older run is
-// retained for display. This lets the browser fall back to a timer rather than mistake
-// an unreachable RUC source for an unchanged run indefinitely.
+// rucAvailability reports the RUC timestamp in the successfully cached default forecast,
+// not the latest observation. A failed poll remains unknown for the browser's fallback.
 func (t *modelRunTracker) rucAvailability() time.Time {
 	t.mutex.RLock()
-	defer t.mutex.RUnlock()
-	if t.rucLastPollOK {
-		for _, run := range t.runs {
-			if run.Model == rucModelName {
-				return run.AvailableAt
+	ok := t.rucLastPollOK
+	t.mutex.RUnlock()
+	if ok {
+		if entry, found := cachedEntry(defaultAirport.Identifier); found {
+			for _, run := range entry.data.ModelRuns {
+				if run.Model == rucModelName {
+					return run.AvailableAt
+				}
 			}
 		}
 	}
 	return time.Time{}
+}
+
+// nextRefresh compares observed runs with the last successfully cached default forecast.
+// Each pending change remains pending across unchanged polls and failed refreshes.
+func (t *modelRunTracker) nextRefresh(now time.Time) (time.Time, bool) {
+	runs, _ := t.snapshot()
+	cached := make(map[string]time.Time)
+	if entry, ok := cachedEntry(defaultAirport.Identifier); ok {
+		for _, run := range entry.data.ModelRuns {
+			cached[run.Model] = run.AvailableAt
+		}
+	}
+	var next time.Time
+	for _, run := range runs {
+		if cached[run.Model].Equal(run.AvailableAt) {
+			continue
+		}
+		ready := run.AvailableAt.Add(modelRunSettleDelay)
+		if ready.Before(now) {
+			ready = now
+		}
+		if next.IsZero() || ready.Before(next) {
+			next = ready
+		}
+	}
+	return next, !next.IsZero()
 }
 
 // poll fetches every model's metadata and reports whether any of them announced a run that
@@ -235,42 +270,64 @@ func fetchModelRunMeta(ctx context.Context, url string) (*modelRunMeta, error) {
 	return &meta, nil
 }
 
-// watchModelRuns polls until ctx is cancelled, invalidating the weather cache whenever a
-// model announces a new run.
-//
-// Invalidation is wholesale because model runs are global: a new run makes every airport's
-// entry stale at the same instant. Only the default airport is re-warmed, for the same
-// reason it is the only one warmed at startup -- refetching thirteen airfields nobody is
-// looking at is exactly the waste this change exists to remove.
+// watchModelRuns polls independently of the one-shot refresh timer. A failed refresh
+// retains the old cache and is retried after modelRunRetryDelay, without a busy loop.
 func watchModelRuns(ctx context.Context) {
 	ticker := time.NewTicker(modelRunPollInterval)
 	defer ticker.Stop()
-
+	timer := time.NewTimer(time.Hour)
+	if !timer.Stop() {
+		<-timer.C
+	}
+	defer timer.Stop()
+	var retryAfter time.Time
 	for {
+		next, pending := modelRuns.nextRefresh(time.Now())
+		if pending {
+			if next.Before(retryAfter) {
+				next = retryAfter
+			}
+			timer.Reset(time.Until(next))
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if pending && !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
 			pollModelRunsOnce(ctx)
+		case <-timer.C:
+			if err := runScheduledRefresh(ctx); err != nil {
+				slog.Warn("scheduled forecast refresh failed", "error", redactedError(err))
+				retryAfter = time.Now().Add(modelRunRetryDelay)
+			} else {
+				retryAfter = time.Time{}
+			}
 		}
 	}
 }
 
-// pollModelRunsOnce is one tick's work, pulled out of watchModelRuns so a panic can be
-// recovered without ending the poller for good. This is the only goroutine that would
-// otherwise take the whole process down with it -- an http.Handler panic is recovered per
-// request by loggingMiddleware, but nothing else catches one here.
+// A panic in the warmer must not end the watcher. Treat it like a failed fetch so the
+// cached forecast survives and the normal retry delay applies.
+func runScheduledRefresh(ctx context.Context) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("panic refreshing forecast: %v", recovered)
+		}
+	}()
+	return refreshDefaultForecast(ctx)
+}
+
+// Recover a bad poll without ending the watcher; the next tick will try again.
 func pollModelRunsOnce(ctx context.Context) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			slog.Error("panic polling model runs", "panic", recovered)
 		}
 	}()
-
-	if modelRuns.poll(ctx) {
-		cache.invalidateAll()
-		slog.Info("model runs advanced, refreshing the default airport",
-			"airport", defaultAirport.Identifier)
-		_, _ = GetWeatherData(ctx, defaultAirport)
-	}
+	modelRuns.poll(ctx)
 }

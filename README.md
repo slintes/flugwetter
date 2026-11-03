@@ -93,8 +93,9 @@ tests sit outside `frontend/` for the same reason: that directory is embedded wh
 ## Data sources
 
 - **[Open-Meteo](https://open-meteo.com/)** — hourly forecast, `icon_seamless`, 18 pressure
-  levels. Cached per airport; the backend polls tracked model metadata every 15 minutes and
-  refreshes when a run changes. ICON-D2 RUC updates hourly, ICON-D2 and ICON-EU every
+  levels. Cached per airport; the backend polls tracked model metadata every 5 minutes and
+  schedules a refresh for 10 minutes after a new run becomes available, allowing time for
+  Open-Meteo's servers to synchronize. ICON-D2 RUC updates hourly, ICON-D2 and ICON-EU every
   3 hours, and ICON global every 6. The browser checks RUC availability every 5 minutes
   and falls back to a timer if it is unavailable. The displayed run time is the newest
   tracked initialization, not provenance for every value in the blended forecast; other

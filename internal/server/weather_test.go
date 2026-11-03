@@ -418,6 +418,41 @@ func TestFetchAndCacheWeatherData_KeepsFresherEntry(t *testing.T) {
 // Concurrent requests for one cold airport must coalesce into a single upstream fetch.
 // cache.invalidateAll drops every airport at once, so a burst at that moment is the case
 // this guards.
+func TestScheduledRefresh_PreventsOldInFlightAirportFromRepopulatingCache(t *testing.T) {
+	withTestAirports(t)
+	started, release := make(chan struct{}), make(chan struct{})
+	var otherFetches atomic.Int32
+	stubFetchWeather(t, func(_ context.Context, airport Airport) (*ProcessedWeatherData, error) {
+		if airport.Identifier == "EDWG" {
+			if otherFetches.Add(1) == 1 {
+				close(started)
+				<-release
+				return &ProcessedWeatherData{GeneratedAt: time.Now(), VfrData: []VfrPoint{{Rating: "old"}}}, nil
+			}
+			return &ProcessedWeatherData{GeneratedAt: time.Now(), VfrData: []VfrPoint{{Rating: "new"}}}, nil
+		}
+		return &ProcessedWeatherData{GeneratedAt: time.Now()}, nil
+	})
+	result := make(chan *ProcessedWeatherData, 1)
+	go func() {
+		data, _ := fetchAndCacheWeatherData(context.Background(), airportsByID["EDWG"])
+		result <- data
+	}()
+	<-started
+	if err := refreshDefaultForecast(context.Background()); err != nil {
+		close(release)
+		t.Fatal(err)
+	}
+	close(release)
+	data := <-result
+	if data == nil || len(data.VfrData) != 1 || data.VfrData[0].Rating != "new" {
+		t.Fatalf("old in-flight result was returned after refresh: %+v", data)
+	}
+	if got := otherFetches.Load(); got != 2 {
+		t.Errorf("other airport fetches = %d, want 2", got)
+	}
+}
+
 func TestFetchAndCacheWeatherData_CoalescesConcurrentCallers(t *testing.T) {
 	var calls int32
 	release := make(chan struct{})

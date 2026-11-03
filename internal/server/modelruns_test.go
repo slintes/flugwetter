@@ -85,8 +85,9 @@ func TestModelRuns_NewRunReportsChange(t *testing.T) {
 		t.Error("poll() = false after the run advanced, want true")
 	}
 
-	if got, want := modelRuns.latestInitializedAt(), time.Unix(initialized, 0).UTC(); !got.Equal(want) {
-		t.Errorf("latestInitializedAt() = %v, want %v", got, want)
+	runs, _ := modelRuns.snapshot()
+	if got, want := runs[0].InitializedAt, time.Unix(initialized, 0).UTC(); !got.Equal(want) {
+		t.Errorf("observed initialization = %v, want %v", got, want)
 	}
 }
 
@@ -106,14 +107,16 @@ func TestModelRuns_RucAvailabilityChangeTriggersRefreshEvenWithSameInitializatio
 	if !modelRuns.poll(context.Background()) {
 		t.Fatal("RUC availability changed without an initialization change; want refresh")
 	}
-	if got, want := modelRuns.rucAvailability(), time.Unix(available, 0).UTC(); !got.Equal(want) {
-		t.Errorf("rucAvailability() = %v, want %v", got, want)
+	runs, _ := modelRuns.snapshot()
+	if got, want := runs[len(runs)-1].AvailableAt, time.Unix(available, 0).UTC(); !got.Equal(want) {
+		t.Errorf("observed RUC availability = %v, want %v", got, want)
 	}
 }
 
-func TestPollModelRunsOnce_RucUpdateInvalidatesAndWarms(t *testing.T) {
+func TestScheduledRefresh_WaitsAndPublishesOnlyAfterSuccess(t *testing.T) {
 	withTestAirports(t)
-	initialized := int64(1786082400)
+	now := time.Now().Truncate(time.Second)
+	initialized := now.Add(-2 * time.Hour).Unix()
 	rucAvailable := initialized + 3600
 	stubModelRunMeta(t, func(_ context.Context, url string) (*modelRunMeta, error) {
 		meta := metaAt(initialized)
@@ -123,45 +126,135 @@ func TestPollModelRunsOnce_RucUpdateInvalidatesAndWarms(t *testing.T) {
 		return meta, nil
 	})
 	modelRuns.poll(context.Background())
+	oldRuns, _ := modelRuns.snapshot()
+	fail := true
+	fetches := 0
+	stubFetchWeather(t, func(_ context.Context, _ Airport) (*ProcessedWeatherData, error) {
+		fetches++
+		if fail {
+			return nil, errors.New("upstream failed")
+		}
+		return &ProcessedWeatherData{GeneratedAt: time.Now()}, nil
+	})
 	cache.invalidateAll()
 	t.Cleanup(cache.invalidateAll)
 	cache.mutex.Lock()
-	cache.entries["EDWG"] = &cacheEntry{data: &ProcessedWeatherData{}, timestamp: time.Now()}
+	cache.entries[defaultAirport.Identifier] = &cacheEntry{data: &ProcessedWeatherData{ModelRuns: oldRuns}, timestamp: now}
+	cache.entries["EDWG"] = &cacheEntry{data: &ProcessedWeatherData{}, timestamp: now}
 	cache.mutex.Unlock()
-	fetches := 0
-	stubFetchWeather(t, func(_ context.Context, airport Airport) (*ProcessedWeatherData, error) {
-		fetches++
-		if airport.Identifier != defaultAirport.Identifier {
-			t.Errorf("warmed %s, want default %s", airport.Identifier, defaultAirport.Identifier)
-		}
-		runs, _ := modelRuns.snapshot()
-		return &ProcessedWeatherData{GeneratedAt: time.Now(), ModelRuns: runs}, nil
-	})
 
-	rucAvailable += 60
+	// A new observation schedules exactly availability+10m and must not change status.
+	rucAvailable = now.Unix()
 	pollModelRunsOnce(context.Background())
-	if fetches != 1 {
-		t.Fatalf("fetches = %d, want one warm-up after RUC update", fetches)
+	next, pending := modelRuns.nextRefresh(now)
+	if want := now.Add(modelRunSettleDelay); !pending || !next.Equal(want) {
+		t.Fatalf("next refresh = %v, %v, want %v, true", next, pending, want)
+	}
+	if got := modelRuns.rucAvailability(); !got.Equal(oldRuns[len(oldRuns)-1].AvailableAt) {
+		t.Errorf("status exposed pending RUC: %v", got)
+	}
+	pollModelRunsOnce(context.Background())
+	if again, ok := modelRuns.nextRefresh(now); !ok || !again.Equal(next) {
+		t.Error("unchanged poll lost pending refresh")
+	}
+
+	// Simulate a now-settled observation. A failed fetch leaves both cache and status
+	// untouched; the next attempt succeeds and atomically invalidates the other airport.
+	rucAvailable = now.Add(-modelRunSettleDelay - time.Second).Unix()
+	modelRuns.poll(context.Background())
+	if err := refreshDefaultForecast(context.Background()); err == nil {
+		t.Fatal("expected refresh failure")
+	}
+	if _, ok := cachedEntry("EDWG"); !ok {
+		t.Fatal("failed refresh discarded cached data")
+	}
+	if got := modelRuns.rucAvailability(); !got.Equal(oldRuns[len(oldRuns)-1].AvailableAt) {
+		t.Fatal("failed refresh published the new run")
+	}
+	fail = false
+	if err := refreshDefaultForecast(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if fetches != 2 {
+		t.Fatalf("fetches = %d, want 2", fetches)
 	}
 	if _, ok := cachedEntry("EDWG"); ok {
-		t.Error("other airports must be invalidated")
+		t.Error("successful refresh must invalidate other airports")
 	}
-	entry, ok := cachedEntry(defaultAirport.Identifier)
-	if !ok {
-		t.Fatal("default airport not warmed")
+	if got, want := modelRuns.rucAvailability(), time.Unix(rucAvailable, 0).UTC(); !got.Equal(want) {
+		t.Errorf("published RUC = %v, want %v", got, want)
 	}
-	var rucFound bool
-	for _, run := range entry.data.ModelRuns {
-		if run.Model == rucModelName {
-			rucFound = run.AvailableAt.Equal(time.Unix(rucAvailable, 0).UTC())
+	if _, pending := modelRuns.nextRefresh(time.Now()); pending {
+		t.Error("successful refresh still pending")
+	}
+}
+
+func TestModelRuns_SettledMetadataAndEarliestDeadline(t *testing.T) {
+	withTestAirports(t)
+	cache.invalidateAll()
+	t.Cleanup(cache.invalidateAll)
+	now := time.Now().Truncate(time.Second)
+	stubModelRunMeta(t, func(context.Context, string) (*modelRunMeta, error) {
+		return metaAt(now.Add(-2 * time.Hour).Unix()), nil
+	})
+	modelRuns.poll(context.Background())
+	runs, _ := modelRuns.snapshot()
+	cache.mutex.Lock()
+	cache.entries[defaultAirport.Identifier] = &cacheEntry{data: &ProcessedWeatherData{ModelRuns: runs}, timestamp: now}
+	cache.mutex.Unlock()
+	modelRuns.mutex.Lock()
+	modelRuns.runs[0].AvailableAt = now.Add(-2 * time.Minute)
+	modelRuns.runs[1].AvailableAt = now.Add(-5 * time.Minute)
+	modelRuns.mutex.Unlock()
+	settled := modelRuns.settledRuns(now)
+	if len(settled) != len(modelRunSources) || !settled[0].AvailableAt.Equal(runs[0].AvailableAt) || !settled[1].AvailableAt.Equal(runs[1].AvailableAt) {
+		t.Errorf("pending models should retain their previous settled metadata: %+v", settled)
+	}
+	if next, ok := modelRuns.nextRefresh(now); !ok || !next.Equal(now.Add(5*time.Minute)) {
+		t.Errorf("next = %v, %v, want earliest deadline %v", next, ok, now.Add(5*time.Minute))
+	}
+	if next, ok := modelRuns.nextRefresh(now.Add(20 * time.Minute)); !ok || !next.Equal(now.Add(20*time.Minute)) {
+		t.Errorf("overdue run should refresh immediately, got %v, %v", next, ok)
+	}
+	cache.invalidateAll()
+	if got := modelRuns.settledRuns(now); len(got) != len(modelRunSources)-2 {
+		t.Errorf("cold fetch must omit unsettled metadata, got %+v", got)
+	}
+}
+
+func TestWatchModelRuns_UsesOneShotTimer(t *testing.T) {
+	withTestAirports(t)
+	now := time.Now()
+	available := now.Add(-modelRunSettleDelay + 2*time.Second).Truncate(time.Second)
+	stubModelRunMeta(t, func(_ context.Context, url string) (*modelRunMeta, error) {
+		meta := metaAt(now.Add(-2 * time.Hour).Unix())
+		if url == modelRunSources[len(modelRunSources)-1].url {
+			meta.LastRunAvailabilityTime = available.Unix()
 		}
-	}
-	if !rucFound {
-		t.Error("warmed forecast did not receive updated RUC availability")
-	}
-	pollModelRunsOnce(context.Background())
-	if fetches != 1 {
-		t.Error("unchanged metadata must not trigger another warm-up")
+		return meta, nil
+	})
+	modelRuns.poll(context.Background())
+	called := make(chan time.Time, 1)
+	stubFetchWeather(t, func(_ context.Context, _ Airport) (*ProcessedWeatherData, error) {
+		called <- time.Now()
+		return &ProcessedWeatherData{GeneratedAt: time.Now()}, nil
+	})
+	runs, _ := modelRuns.snapshot()
+	runs[len(runs)-1].AvailableAt = available.Add(-time.Hour)
+	cache.mutex.Lock()
+	cache.entries[defaultAirport.Identifier] = &cacheEntry{data: &ProcessedWeatherData{ModelRuns: runs}, timestamp: now}
+	cache.mutex.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); watchModelRuns(ctx) }()
+	t.Cleanup(func() { cancel(); <-done })
+	select {
+	case at := <-called:
+		if at.Before(available.Add(modelRunSettleDelay)) {
+			t.Fatalf("refresh at %v before synchronization deadline", at)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("one-shot refresh did not fire without another metadata poll")
 	}
 }
 
@@ -175,6 +268,12 @@ func TestModelRuns_RucFailureUsesFallbackAndRecovers(t *testing.T) {
 		return metaAt(1786082400), nil
 	})
 	modelRuns.poll(context.Background())
+	cache.invalidateAll()
+	t.Cleanup(cache.invalidateAll)
+	cacheRuns, _ := modelRuns.snapshot()
+	cache.mutex.Lock()
+	cache.entries[defaultAirport.Identifier] = &cacheEntry{data: &ProcessedWeatherData{ModelRuns: cacheRuns}, timestamp: time.Now()}
+	cache.mutex.Unlock()
 	if modelRuns.rucAvailability().IsZero() {
 		t.Fatal("RUC availability missing after successful poll")
 	}
@@ -351,6 +450,8 @@ func TestFetchModelRunMeta_DecodesTheRealShape(t *testing.T) {
 
 func TestGetStatus_ReportsTheLatestRun(t *testing.T) {
 	withTestAirports(t)
+	cache.invalidateAll()
+	t.Cleanup(cache.invalidateAll)
 	initialized := int64(1786082400)
 	stubModelRunMeta(t, func(_ context.Context, url string) (*modelRunMeta, error) {
 		// D2 is polled first and is the newest; the others are older cycles.
@@ -364,6 +465,10 @@ func TestGetStatus_ReportsTheLatestRun(t *testing.T) {
 		}
 	})
 	modelRuns.poll(context.Background())
+	runs, _ := modelRuns.snapshot()
+	cache.mutex.Lock()
+	cache.entries[defaultAirport.Identifier] = &cacheEntry{data: &ProcessedWeatherData{ModelRuns: runs}, timestamp: time.Now()}
+	cache.mutex.Unlock()
 
 	rec := httptest.NewRecorder()
 	getStatus(rec, httptest.NewRequest(http.MethodGet, "/api/status", nil))

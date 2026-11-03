@@ -295,7 +295,6 @@ func Run() error {
 	// the poller has a baseline to compare against rather than treating every model as new
 	// on its first tick.
 	modelRuns.poll(ctx)
-	go watchModelRuns(ctx)
 
 	// The airspace plan, on its own six-hour cadence. Polled once here so the first page
 	// load has it, then left to its ticker -- nothing downstream needs invalidating, so it
@@ -306,6 +305,7 @@ func Run() error {
 	// pre cache weather data for the default airport only. Warming all of them would fire
 	// one very large Open-Meteo request per airfield before the first user arrives.
 	_, _ = GetWeatherData(ctx, defaultAirport)
+	go watchModelRuns(ctx)
 
 	// Serve static files from the embedded frontend (or from disk under FLUGWETTER_DEV).
 	assets, err := web.New()
@@ -424,13 +424,17 @@ func getStatus(w http.ResponseWriter, r *http.Request) {
 
 	_, degraded := modelRuns.snapshot()
 	status := StatusResponse{
-		LatestInitializedAt: modelRuns.latestInitializedAt(),
-		RucAvailableAt:      modelRuns.rucAvailability(),
-		ModelRunsDegraded:   degraded,
-		Commit:              buildInfo().Commit,
+		RucAvailableAt:    modelRuns.rucAvailability(),
+		ModelRunsDegraded: degraded,
+		Commit:            buildInfo().Commit,
 	}
 	if entry, ok := cachedEntry(defaultAirport.Identifier); ok {
 		status.GeneratedAt = entry.data.GeneratedAt
+		for _, run := range entry.data.ModelRuns {
+			if run.InitializedAt.After(status.LatestInitializedAt) {
+				status.LatestInitializedAt = run.InitializedAt
+			}
+		}
 	}
 
 	if err := json.NewEncoder(w).Encode(status); err != nil {
