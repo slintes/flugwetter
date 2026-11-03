@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { shouldReload, shouldReloadPage, isKnownRun, latestModelRun, formatModelRun } from '../frontend/js/status.js';
+import { shouldReload, shouldReloadPage, isKnownRun, latestModelRun, rucAvailability, formatModelRun } from '../frontend/js/status.js';
 
 const MAX_AGE = 15 * 60 * 1000;
 const RUN_06Z = '2026-08-07T06:00:00Z';
@@ -49,14 +49,35 @@ test('a failed status poll still refreshes once the data is old', () => {
     assert.equal(shouldReload(RUN_06Z, null, MAX_AGE + 1, MAX_AGE), true);
 });
 
+test('RUC availability identifies a new run even if the latest initialization is unchanged', () => {
+    const runs = [
+        { model: 'icon_d2', initialized_at: RUN_09Z, available_at: '2026-08-07T10:10:00Z' },
+        { model: 'icon_d2_ruc', initialized_at: RUN_09Z, available_at: '2026-08-07T09:50:00Z' },
+    ];
+    const rendered = rucAvailability(runs);
+    assert.equal(rendered, '2026-08-07T09:50:00Z');
+    assert.equal(latestModelRun(runs), RUN_09Z);
+    assert.equal(shouldReload(rendered, '2026-08-07T10:05:00Z', 0, MAX_AGE), true);
+    assert.equal(shouldReload(rendered, rendered, 0, MAX_AGE), false);
+});
+
+test('missing or invalid RUC availability triggers the normal clock fallback', () => {
+    for (const runs of [undefined, [], [{model: 'icon_d2'}],
+        [{model: 'icon_d2_ruc', available_at: '0001-01-01T00:00:00Z'}]]) {
+        assert.equal(rucAvailability(runs), null);
+        assert.equal(shouldReload(rucAvailability(runs), RUN_09Z, MAX_AGE, MAX_AGE), true);
+    }
+});
+
 test('latestModelRun picks the newest across the models', () => {
     const runs = [
         { model: 'icon_d2', initialized_at: RUN_06Z },
         { model: 'icon_eu', initialized_at: '2026-08-07T03:00:00Z' },
         { model: 'icon_global', initialized_at: '2026-08-07T00:00:00Z' },
+        { model: 'icon_d2_ruc', initialized_at: RUN_09Z },
     ];
 
-    assert.equal(latestModelRun(runs), RUN_06Z);
+    assert.equal(latestModelRun(runs), RUN_09Z);
 });
 
 // An older payload, or one served while run detection was down, carries no runs at all.

@@ -93,12 +93,13 @@ tests sit outside `frontend/` for the same reason: that directory is embedded wh
 ## Data sources
 
 - **[Open-Meteo](https://open-meteo.com/)** — hourly forecast, `icon_seamless`, 18 pressure
-  levels. Cached per airport and refetched when a new model run appears rather than on a
-  timer: DWD runs ICON-D2 and ICON-EU every 3 hours and ICON global every 6, so the backend
-  polls each model's run times (a ~600 byte document) every 15 minutes and pulls the
-  forecast only when one advances. The page shows which run it is looking at, and says so
-  if run detection stops working. When Open-Meteo is unreachable the last good payload is
-  served, flagged `stale`, and the page says how old it is.
+  levels. Cached per airport; the backend polls tracked model metadata every 15 minutes and
+  refreshes when a run changes. ICON-D2 RUC updates hourly, ICON-D2 and ICON-EU every
+  3 hours, and ICON global every 6. The browser checks RUC availability every 5 minutes
+  and falls back to a timer if it is unavailable. The displayed run time is the newest
+  tracked initialization, not provenance for every value in the blended forecast; other
+  contributing datasets are not yet tracked. When run detection fails the page warns, and
+  when Open-Meteo is unreachable an expired cached forecast is flagged `stale`.
 - **[sunrise-sunset.org](https://sunrise-sunset.org/)** — daylight and civil twilight, one
   lookup per date.
 - **[OpenStreetMap](https://www.openstreetmap.org/)** and optionally

@@ -5,16 +5,15 @@ import { applyInitialZoomOnce } from './panzoom.js';
 import { getAppConfig, getCurrentAirportId, isHomeAirport } from './airports.js';
 import { toEpochMs } from './time.js';
 import { VFR_BADGE_Y_FRACTION } from './viewport.js';
-import { shouldReload, shouldReloadPage, latestModelRun, formatModelRun } from './status.js';
+import { shouldReload, shouldReloadPage, latestModelRun, rucAvailability, formatModelRun } from './status.js';
 import { setBands } from './bands.js';
 import { loadRestrictions, restrictionsUnavailable, windowsFor, HOME_AREA } from './restrictions.js';
 
 // When the data on screen was last replaced.
 let lastLoadedAt = Date.now();
 
-// The model run behind the forecast currently on screen. The status poll compares against
-// this, so it is what makes a reload conditional rather than periodic.
-let renderedRun = null;
+// RUC availability stamped into the forecast on screen, compared with /api/status.
+let renderedRucAvailability = null;
 
 // Forecast loading and model-run detection have independent failure states.
 // EDR availability is read separately from the restrictions cache.
@@ -139,13 +138,13 @@ function forecastSpan(points) {
     return Number.isFinite(from) ? { from, to } : { from: NaN, to: NaN };
 }
 
-// The forecast's own age, which generated_at is not: that one says when we fetched our
-// copy, this says when the weather model behind it last ran.
+// The newest tracked model initialization is a summary of the blended forecast, not a
+// guarantee about the run behind every value. generated_at instead says when we fetched it.
 function updateModelRunLabel(data) {
-    renderedRun = latestModelRun(data.model_runs);
+    renderedRucAvailability = rucAvailability(data.model_runs);
 
     const element = document.getElementById('modelRun');
-    const label = formatModelRun(renderedRun);
+    const label = formatModelRun(latestModelRun(data.model_runs));
     element.textContent = label;
     element.hidden = label === '';
 }
@@ -338,9 +337,7 @@ export function updateCharts(data) {
 }
 
 
-// How often to ask whether anything changed. Far more often than the forecast actually
-// changes -- the models run every three hours -- because the question costs ~130 bytes and
-// the answer is almost always no.
+// Ask frequently enough to pick up the hourly RUC run without polling the full forecast.
 export const STATUS_POLL_INTERVAL_MS = 5 * 60 * 1000;
 
 // The clock fallback, used only when run times are unknown on one side or the other. This
@@ -352,9 +349,8 @@ export const MAX_AGE_MS = 15 * 60 * 1000;
 // loop. At most one reload per page load; the reloaded page reads the new commit and agrees.
 let pageReloadRequested = false;
 
-// checkForNewData asks the backend what run it is on and reloads only if that differs from
-// what is on screen. A network failure here is not surfaced: the forecast already displayed
-// is still valid, and the next poll will try again.
+// checkForNewData reloads when RUC availability changes, or on the clock fallback when
+// RUC metadata is unavailable. A failed status request also takes the fallback path.
 export async function checkForNewData() {
     let status = null;
     try {
@@ -378,8 +374,8 @@ export async function checkForNewData() {
         return;
     }
 
-    const latest = status ? status.latest_initialized_at : null;
-    if (shouldReload(renderedRun, latest, Date.now() - lastLoadedAt, MAX_AGE_MS)) {
+    const latest = status ? status.ruc_available_at : null;
+    if (shouldReload(renderedRucAvailability, latest, Date.now() - lastLoadedAt, MAX_AGE_MS)) {
         await loadWeatherData();
     }
 }

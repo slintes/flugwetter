@@ -29,9 +29,8 @@ type ProcessedWeatherData struct {
 	// instead. The frontend must say so: silently presenting old weather as current is the
 	// one failure a flight-planning tool cannot afford.
 	Stale bool `json:"stale"`
-	// ModelRuns is when the models behind this forecast were last run, newest first. It is
-	// the forecast's own age, which GeneratedAt is not: that one only says when we fetched
-	// our copy.
+	// ModelRuns is the most recently observed metadata for the tracked models at processing
+	// time. It is a summary, not guaranteed provenance for each value in the blended forecast.
 	ModelRuns []ModelRun `json:"model_runs,omitempty"`
 	// NightPeriods are the stretches the charts shade grey, bounded by civil twilight --
 	// the same boundary the VFR score zeroes an hour against, so the two cannot disagree.
@@ -399,12 +398,13 @@ func getConfig(w http.ResponseWriter, r *http.Request) {
 // StatusResponse is what the frontend polls between forecasts. It exists so a client can
 // ask "is there anything new" for ~130 bytes instead of re-fetching 63KB of forecast.
 type StatusResponse struct {
-	// LatestInitializedAt is the newest model initialization time known. The frontend holds the one
-	// it rendered and reloads only when this differs, so it is the whole point of the
-	// endpoint. Zero when no poll has succeeded yet.
+	// LatestInitializedAt summarizes the newest tracked model initialization time.
 	LatestInitializedAt time.Time `json:"latest_initialized_at"`
+	// RucAvailableAt is zero when the latest RUC metadata poll failed. The browser
+	// compares it with the RUC run in its forecast, falling back to a timer if unknown.
+	RucAvailableAt time.Time `json:"ruc_available_at"`
 	// GeneratedAt is when the default airport's cached payload was built. Informational:
-	// the reload decision keys off LatestRun.
+	// the reload decision keys off RucAvailableAt.
 	GeneratedAt time.Time `json:"generated_at"`
 	// ModelRunsDegraded reports that run detection has stopped working, so refreshes have
 	// fallen back to the backstop TTL. Surfaced in the page rather than only logged: a
@@ -425,6 +425,7 @@ func getStatus(w http.ResponseWriter, r *http.Request) {
 	_, degraded := modelRuns.snapshot()
 	status := StatusResponse{
 		LatestInitializedAt: modelRuns.latestInitializedAt(),
+		RucAvailableAt:      modelRuns.rucAvailability(),
 		ModelRunsDegraded:   degraded,
 		Commit:              buildInfo().Commit,
 	}

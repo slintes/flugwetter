@@ -22,6 +22,8 @@ func stubModelRunMeta(t *testing.T, fn func(ctx context.Context, url string) (*m
 	modelRuns.mutex.Lock()
 	modelRuns.runs = nil
 	modelRuns.consecutiveFails = 0
+	modelRuns.rucConsecutiveFails = 0
+	modelRuns.rucLastPollOK = false
 	modelRuns.lastSuccess = time.Time{}
 	modelRuns.mutex.Unlock()
 }
@@ -85,6 +87,129 @@ func TestModelRuns_NewRunReportsChange(t *testing.T) {
 
 	if got, want := modelRuns.latestInitializedAt(), time.Unix(initialized, 0).UTC(); !got.Equal(want) {
 		t.Errorf("latestInitializedAt() = %v, want %v", got, want)
+	}
+}
+
+func TestModelRuns_RucAvailabilityChangeTriggersRefreshEvenWithSameInitialization(t *testing.T) {
+	initialized := int64(1786082400)
+	available := initialized + 3600
+	stubModelRunMeta(t, func(_ context.Context, url string) (*modelRunMeta, error) {
+		meta := metaAt(initialized)
+		if url == modelRunSources[len(modelRunSources)-1].url {
+			meta.LastRunAvailabilityTime = available
+		}
+		return meta, nil
+	})
+
+	modelRuns.poll(context.Background())
+	available += 60
+	if !modelRuns.poll(context.Background()) {
+		t.Fatal("RUC availability changed without an initialization change; want refresh")
+	}
+	if got, want := modelRuns.rucAvailability(), time.Unix(available, 0).UTC(); !got.Equal(want) {
+		t.Errorf("rucAvailability() = %v, want %v", got, want)
+	}
+}
+
+func TestPollModelRunsOnce_RucUpdateInvalidatesAndWarms(t *testing.T) {
+	withTestAirports(t)
+	initialized := int64(1786082400)
+	rucAvailable := initialized + 3600
+	stubModelRunMeta(t, func(_ context.Context, url string) (*modelRunMeta, error) {
+		meta := metaAt(initialized)
+		if url == modelRunSources[len(modelRunSources)-1].url {
+			meta.LastRunAvailabilityTime = rucAvailable
+		}
+		return meta, nil
+	})
+	modelRuns.poll(context.Background())
+	cache.invalidateAll()
+	t.Cleanup(cache.invalidateAll)
+	cache.mutex.Lock()
+	cache.entries["EDWG"] = &cacheEntry{data: &ProcessedWeatherData{}, timestamp: time.Now()}
+	cache.mutex.Unlock()
+	fetches := 0
+	stubFetchWeather(t, func(_ context.Context, airport Airport) (*ProcessedWeatherData, error) {
+		fetches++
+		if airport.Identifier != defaultAirport.Identifier {
+			t.Errorf("warmed %s, want default %s", airport.Identifier, defaultAirport.Identifier)
+		}
+		runs, _ := modelRuns.snapshot()
+		return &ProcessedWeatherData{GeneratedAt: time.Now(), ModelRuns: runs}, nil
+	})
+
+	rucAvailable += 60
+	pollModelRunsOnce(context.Background())
+	if fetches != 1 {
+		t.Fatalf("fetches = %d, want one warm-up after RUC update", fetches)
+	}
+	if _, ok := cachedEntry("EDWG"); ok {
+		t.Error("other airports must be invalidated")
+	}
+	entry, ok := cachedEntry(defaultAirport.Identifier)
+	if !ok {
+		t.Fatal("default airport not warmed")
+	}
+	var rucFound bool
+	for _, run := range entry.data.ModelRuns {
+		if run.Model == rucModelName {
+			rucFound = run.AvailableAt.Equal(time.Unix(rucAvailable, 0).UTC())
+		}
+	}
+	if !rucFound {
+		t.Error("warmed forecast did not receive updated RUC availability")
+	}
+	pollModelRunsOnce(context.Background())
+	if fetches != 1 {
+		t.Error("unchanged metadata must not trigger another warm-up")
+	}
+}
+
+func TestModelRuns_RucFailureUsesFallbackAndRecovers(t *testing.T) {
+	withTestAirports(t)
+	failRUC := false
+	stubModelRunMeta(t, func(_ context.Context, url string) (*modelRunMeta, error) {
+		if failRUC && url == modelRunSources[len(modelRunSources)-1].url {
+			return nil, errors.New("RUC unavailable")
+		}
+		return metaAt(1786082400), nil
+	})
+	modelRuns.poll(context.Background())
+	if modelRuns.rucAvailability().IsZero() {
+		t.Fatal("RUC availability missing after successful poll")
+	}
+	failRUC = true
+	modelRuns.poll(context.Background())
+	if !modelRuns.rucAvailability().IsZero() {
+		t.Error("failed RUC poll must expose unknown availability for browser fallback")
+	}
+	runs, degraded := modelRuns.snapshot()
+	if len(runs) != len(modelRunSources) {
+		t.Fatal("failed RUC poll must retain the last known run for display")
+	}
+	if degraded {
+		t.Error("one failed RUC poll must not raise a degraded warning")
+	}
+	modelRuns.poll(context.Background())
+	if _, degraded = modelRuns.snapshot(); !degraded {
+		t.Error("two failed RUC polls must raise a degraded warning")
+	}
+	rec := httptest.NewRecorder()
+	getStatus(rec, httptest.NewRequest(http.MethodGet, "/api/status", nil))
+	var status StatusResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if !status.RucAvailableAt.IsZero() || !status.ModelRunsDegraded {
+		t.Errorf("status must expose unknown RUC and degraded warning: %+v", status)
+	}
+	failRUC = false
+	modelRuns.poll(context.Background())
+	if modelRuns.rucAvailability().IsZero() {
+		t.Error("RUC availability missing after recovery")
+	}
+	if _, degraded = modelRuns.snapshot(); degraded {
+		t.Error("successful RUC poll must clear the degraded warning")
 	}
 }
 
@@ -260,6 +385,9 @@ func TestGetStatus_ReportsTheLatestRun(t *testing.T) {
 	}
 	if got.ModelRunsDegraded {
 		t.Error("ModelRunsDegraded = true after a successful poll")
+	}
+	if want := time.Unix(initialized-6*3600+3600, 0).UTC(); !got.RucAvailableAt.Equal(want) {
+		t.Errorf("RucAvailableAt = %v, want %v", got.RucAvailableAt, want)
 	}
 }
 

@@ -1,8 +1,7 @@
 // The reload decision, and how a model run is written.
 //
-// The backend refetches the forecast when a model announces a new run rather than on a
-// clock, so the frontend asks a ~130 byte endpoint whether anything changed instead of
-// re-fetching 63KB of forecast every quarter hour.
+// The backend refetches when a tracked model changes. The frontend watches RUC's hourly
+// availability time rather than refetching the full forecast on every poll.
 //
 // Deliberately free of the DOM and of Chart.js, so internal/web/jstest/ can run it under
 // node --test -- the same rule viewport.js, barbs.js and time.js follow.
@@ -16,14 +15,9 @@ export function isKnownRun(run) {
     return typeof run === 'string' && run !== '' && run !== ZERO_TIME;
 }
 
-// shouldReload decides whether to pull the full forecast again.
-//
-// When both run times are known the comparison is exact: reload if the backend is on a
-// different run from the one on screen. When either is unknown -- no successful metadata
-// poll, an older payload, a malformed response -- it falls back to the clock, which is what
-// the frontend did before any of this existed. Falling back to reloading too often is a
-// wasted request; failing to reload leaves stale weather on screen, so the fallback errs
-// towards the former.
+// shouldReload compares the RUC availability timestamp in the forecast to the latest one
+// reported by status. Initialization alone cannot detect a reissued run. If either side
+// is unknown, fall back to the clock rather than leave the forecast stale indefinitely.
 export function shouldReload(renderedRun, latestRun, ageMs, maxAgeMs) {
     if (!isKnownRun(renderedRun) || !isKnownRun(latestRun)) {
         return ageMs >= maxAgeMs;
@@ -48,13 +42,16 @@ export function shouldReloadPage(loadedCommit, servedCommit) {
     return loadedCommit !== servedCommit;
 }
 
-// latestModelRun picks the run the UI labels the forecast with: the newest across the
-// models behind `icon_seamless`.
-//
-// That is the ICON-D2 run, which covers roughly the first 46 hours. The tail of the chart
-// comes from EU and global runs that are three and six hours older, so the label is the
-// optimistic reading -- right for the part of the forecast anyone is looking at, and the
-// full set is in the payload for anything that wants to be more careful.
+// rucAvailability extracts the availability time stamped into a forecast, not the newest
+// initialization time: a different model can have the same or a newer initialization.
+export function rucAvailability(runs) {
+    if (!Array.isArray(runs)) return null;
+    const ruc = runs.find(run => run && run.model === 'icon_d2_ruc');
+    return ruc && isKnownRun(ruc.available_at) ? ruc.available_at : null;
+}
+
+// latestModelRun is the UI's summary of the newest tracked initialization. The blended
+// forecast can contain other models and older runs, especially further into the future.
 export function latestModelRun(runs) {
     if (!Array.isArray(runs) || runs.length === 0) {
         return null;

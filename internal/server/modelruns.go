@@ -12,9 +12,8 @@ import (
 
 // Model run tracking.
 //
-// The forecast used to be refetched on a 15-minute clock, but DWD does not produce data on
-// that cadence: ICON-D2 and ICON-EU run every three hours, ICON global every six. Roughly
-// eleven of every twelve fetches returned bytes we already had.
+// ICON-D2 RUC runs hourly, ICON-D2 and ICON-EU every three hours, and ICON global every
+// six. Polling metadata rather than the full forecast lets us react to each run cheaply.
 //
 // Open-Meteo publishes each model's run times at a small metadata document -- 598 bytes
 // against 63.7 KB for the forecast itself. Polling that instead turns "refetch every 15
@@ -25,8 +24,9 @@ import (
 // built to degrade: a failure keeps the last known runs, leaves the cache alone, and lets
 // the backstop TTL in weather.go do what the clock used to do.
 
-// The models behind `models=icon_seamless`, in the order they cover the forecast: D2 for
-// the first ~46 hours, then EU, then global for the tail.
+// Tracked models behind `models=icon_seamless`. RUC supplies the near term, D2 extends
+// it, and EU and global cover the tail. Open-Meteo also uses other datasets; these run
+// times are a useful summary, not complete provenance for each forecast value.
 var modelRunSources = []struct {
 	name string // as reported to the frontend
 	url  string
@@ -34,11 +34,13 @@ var modelRunSources = []struct {
 	{"icon_d2", "https://api.open-meteo.com/data/dwd_icon_d2/static/meta.json"},
 	{"icon_eu", "https://api.open-meteo.com/data/dwd_icon_eu/static/meta.json"},
 	{"icon_global", "https://api.open-meteo.com/data/dwd_icon/static/meta.json"},
+	{rucModelName, "https://api.open-meteo.com/data/dwd_icon_d2_ruc_native/static/meta.json"},
 }
 
+const rucModelName = "icon_d2_ruc"
+
 const (
-	// Long enough to be a rounding error against a three-hour model cycle, short enough
-	// that a new run is on screen within a few minutes of appearing.
+	// Poll frequently enough to notice the hourly RUC run without fetching the forecast.
 	modelRunPollInterval = 15 * time.Minute
 
 	// One failed poll is a blip -- a transient DNS or TLS error would otherwise flap the
@@ -64,39 +66,36 @@ type modelRunMeta struct {
 type modelRunTracker struct {
 	mutex sync.RWMutex
 
-	runs             []ModelRun
-	lastSuccess      time.Time
-	consecutiveFails int
+	runs                []ModelRun
+	lastSuccess         time.Time
+	consecutiveFails    int
+	rucConsecutiveFails int
+	rucLastPollOK       bool
 }
 
 var modelRuns = &modelRunTracker{}
 
 // snapshot returns the known runs and whether run detection is currently degraded.
 //
-// Degraded is deliberately not "the last poll failed": it is a claim that the mechanism has
-// stopped working, and one transient error is not that. Nothing here is fatal -- the
-// forecast keeps being served either way -- so the only cost of being slow to raise it is
-// being slow to raise it.
+// Degraded means two consecutive total failures or RUC failures, not one transient error.
+// A single RUC failure still makes its availability unknown to the browser, activating the
+// fallback without immediately raising a visible warning.
 // The runs are cloned, not returned directly. A slice is a header over shared storage, so
 // handing out t.runs would let any later in-place write -- t.runs[i] = x, or an append that
 // fits in the existing capacity -- rewrite the run times inside payloads that were already
 // cached and served, from a goroutine holding no lock the readers respect. Today poll()
 // happens to allocate a fresh array every time, which makes that safe by accident; three
-// elements is far too little to keep that as an invariant somebody has to remember.
+// entries are far too few to keep that as an invariant somebody has to remember.
 func (t *modelRunTracker) snapshot() (runs []ModelRun, degraded bool) {
 	t.mutex.RLock()
 	defer t.mutex.RUnlock()
 
-	return slices.Clone(t.runs), t.consecutiveFails >= modelRunFailuresBeforeDegraded
+	return slices.Clone(t.runs), t.consecutiveFails >= modelRunFailuresBeforeDegraded ||
+		t.rucConsecutiveFails >= modelRunFailuresBeforeDegraded
 }
 
-// latestInitializedAt returns the newest initialization time across the models, which is the one the
-// frontend labels the forecast with.
-//
-// That is the D2 run, and it is the optimistic reading: D2 only covers the first ~46 hours,
-// so the tail of the chart comes from EU and global runs that are three and six hours
-// older. It is the right number for the part of the forecast anyone is actually looking at,
-// and the full set is on the wire for anything that wants to be more careful.
+// latestInitializedAt returns the newest tracked initialization time. It is a summary,
+// not the provenance of every hour or variable in the blended forecast.
 func (t *modelRunTracker) latestInitializedAt() time.Time {
 	t.mutex.RLock()
 	defer t.mutex.RUnlock()
@@ -110,15 +109,32 @@ func (t *modelRunTracker) latestInitializedAt() time.Time {
 	return latest
 }
 
+// rucAvailability returns zero if the latest RUC poll failed, even if an older run is
+// retained for display. This lets the browser fall back to a timer rather than mistake
+// an unreachable RUC source for an unchanged run indefinitely.
+func (t *modelRunTracker) rucAvailability() time.Time {
+	t.mutex.RLock()
+	defer t.mutex.RUnlock()
+	if t.rucLastPollOK {
+		for _, run := range t.runs {
+			if run.Model == rucModelName {
+				return run.AvailableAt
+			}
+		}
+	}
+	return time.Time{}
+}
+
 // poll fetches every model's metadata and reports whether any of them announced a run that
 // was not there before.
 //
 // A partial failure is still worth acting on: if D2 has a new run and EU is unreachable,
-// the forecast has changed and should be refetched. Only a total failure counts against the
-// degraded threshold, because anything less means the mechanism is working.
+// the forecast has changed and should be refetched. Repeated RUC failures also degrade the
+// tracker because the browser relies on that source for timely reloads.
 func (t *modelRunTracker) poll(ctx context.Context) (changed bool) {
 	fetched := make([]ModelRun, 0, len(modelRunSources))
 	var failures int
+	var rucPollOK bool
 
 	for _, source := range modelRunSources {
 		meta, err := fetchModelRunMetaFn(ctx, source.url)
@@ -128,6 +144,9 @@ func (t *modelRunTracker) poll(ctx context.Context) (changed bool) {
 			continue
 		}
 
+		if source.name == rucModelName {
+			rucPollOK = true
+		}
 		fetched = append(fetched, ModelRun{
 			Model:         source.name,
 			InitializedAt: time.Unix(meta.LastRunInitialisationTime, 0).UTC(),
@@ -137,6 +156,12 @@ func (t *modelRunTracker) poll(ctx context.Context) (changed bool) {
 
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
+	t.rucLastPollOK = rucPollOK
+	if rucPollOK {
+		t.rucConsecutiveFails = 0
+	} else {
+		t.rucConsecutiveFails++
+	}
 
 	if failures == len(modelRunSources) {
 		t.consecutiveFails++
