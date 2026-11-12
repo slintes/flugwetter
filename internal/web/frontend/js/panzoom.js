@@ -59,6 +59,9 @@ export function resetZoom(hours) {
 }
 
 function resetChartZoom(chart, hours) {
+    // Remeasure the canvas as well as resetting the time range. A responsive resize can
+    // repair stale chart dimensions that a normal update alone does not remeasure.
+    chart.resize();
     const xAxis = chart.scales.x;
     let min;
     let max;
