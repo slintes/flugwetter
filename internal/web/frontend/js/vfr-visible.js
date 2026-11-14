@@ -1,5 +1,5 @@
-// The VFR chart skips overlapping badges when zoomed out. Drawing and interaction must
-// agree on which hours survived, or a tooltip can describe an invisible neighboring hour.
+// The VFR chart skips overlapping badges when zoomed out. This selects the badges that
+// remain in the normal drawing pass; a hovered omitted hour is drawn separately on top.
 export function visibleVfrIndices(points, pixelForTime, left, right, badgeWidth) {
     const indices = [];
     let previousRight = -Infinity;

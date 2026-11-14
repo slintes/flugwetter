@@ -96,7 +96,10 @@ export function initializeCharts() {
             maintainAspectRatio: false,
             interaction: {
                 intersect: false,
-                mode: 'vfrVisible'
+                // Match every other chart: the tooltip follows the nearest hourly value.
+                // If its badge was thinned out at this zoom, vfrText paints it while the
+                // tooltip is active so the selection remains visible.
+                mode: 'timeNearest'
             },
             events: ['mousedown', 'mousemove', 'mouseup', 'click', 'mouseover', 'mouseout', 'wheel'],
             // No visible y axis here, so the space the other charts give their axes has to
@@ -203,7 +206,7 @@ export function initializeCharts() {
             maintainAspectRatio: false,
             interaction: {
                 intersect: false,
-                mode: 'index'
+                mode: 'timeNearest'
             },
             events: ['mousedown', 'mousemove', 'mouseup', 'click', 'mouseover', 'mouseout', 'wheel'],
             scales: {

@@ -32,7 +32,9 @@ function preloadWeatherIcons() {
 // Preload icons when the page loads
 preloadWeatherIcons();
 
-// Custom interaction mode: correlate datasets by TIME, not by array index.
+// Shared interaction mode for all four charts: correlate datasets by TIME, not by array
+// index. It keeps each tooltip moving hour by hour, while still ensuring every row belongs
+// to the hour under the cursor.
 //
 // Chart.js' built-in 'index' mode takes the nearest element's array index and reads
 // that same index out of every other dataset. That only works when all datasets are
@@ -79,32 +81,6 @@ Chart.Interaction.modes.timeNearest = function(chart, e, options, useFinalPositi
     });
 
     return items;
-};
-
-// Only select badges that vfrText actually drew. At wide zoom levels there may be
-// several hourly points between two visible badges, but they have no visible target.
-Chart.Interaction.modes.vfrVisible = function(chart, e) {
-    const position = Chart.helpers.getRelativePosition(e, chart);
-    const area = chart.chartArea;
-    if (position.x < area.left || position.x > area.right ||
-        position.y < area.top || position.y > area.bottom) return [];
-
-    const meta = chart.getDatasetMeta(0);
-    if (!chart.isDatasetVisible(0)) return [];
-    const data = chart.data.datasets[0].data;
-    const indices = visibleVfrIndices(data, x => chart.scales.x.getPixelForValue(x),
-        area.left, area.right, vfrMetrics().badge.width);
-    let best = null, bestDistance = Infinity;
-    for (const i of indices) {
-        const element = meta.data[i];
-        if (!element || element.skip) continue;
-        const distance = Math.abs(chart.scales.x.getPixelForValue(data[i].x) - position.x);
-        if (distance < bestDistance) {
-            bestDistance = distance;
-            best = {element, datasetIndex: 0, index: i};
-        }
-    }
-    return best ? [best] : [];
 };
 
 // responsiveAxes runs before every layout, which is what makes a resize across the
@@ -379,6 +355,60 @@ function drawGustWarningMark(ctx, x, y, badge) {
     ctx.restore();
 }
 
+// At a coarse zoom the normal badges are deliberately thinned out. A tooltip may still
+// select any hourly value, so paint that otherwise-hidden badge on top while it is being
+// inspected. This preserves the old, smooth hour-by-hour interaction without a tooltip
+// ever describing a value that has no visible badge.
+function drawHoveredVfrBadge(ctx, point, x, y, metrics) {
+    const { badge } = metrics;
+
+    if (!point.rating) {
+        ctx.save();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        if (ctx.roundRect) {
+            ctx.roundRect(x - badge.width / 2, y - badge.height / 2,
+                badge.width, badge.height, badge.height / 2);
+        } else {
+            ctx.rect(x - badge.width / 2, y - badge.height / 2, badge.width, badge.height);
+        }
+        ctx.fill();
+        ctx.restore();
+
+        ctx.fillStyle = '#999';
+        ctx.font = metrics.font;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('–', x, y);
+    } else {
+        const style = RATING_STYLE[point.rating] || { letter: '?', fill: '#999', text: '#fff' };
+        if (point.visibilityKnown === false) {
+            drawBadge(ctx, x, y, badge, ESTIMATE_FILL, ESTIMATE_TEXT, style.letter);
+        } else {
+            drawBadge(ctx, x, y, badge, style.fill, style.text, style.letter);
+        }
+        if (point.gustWarning) {
+            drawGustWarningMark(ctx, x, y, badge);
+        }
+    }
+
+    // The outline tells a tightly packed row apart from the badge it temporarily covers.
+    const padding = Math.max(2, badge.height * 0.14);
+    ctx.save();
+    ctx.lineWidth = Math.max(2, badge.height * 0.12);
+    ctx.strokeStyle = '#0f172a';
+    ctx.beginPath();
+    if (ctx.roundRect) {
+        ctx.roundRect(x - badge.width / 2 - padding, y - badge.height / 2 - padding,
+            badge.width + padding * 2, badge.height + padding * 2, badge.height / 2 + padding);
+    } else {
+        ctx.rect(x - badge.width / 2 - padding, y - badge.height / 2 - padding,
+            badge.width + padding * 2, badge.height + padding * 2);
+    }
+    ctx.stroke();
+    ctx.restore();
+}
+
 // Custom plugin to draw the VFR rating badge and weather icon for each hour
 Chart.register({
     id: 'vfrText',
@@ -396,8 +426,8 @@ Chart.register({
             ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
             ctx.clip();
             
-            // The same selection is used by the interaction mode, so a skipped badge
-            // cannot still supply the tooltip for a neighboring visible badge.
+            // At coarse zoom levels opaque badges must not overlap. Interaction remains
+            // hour-by-hour; a hovered hour omitted here is painted on top below.
             chart.data.datasets.forEach((dataset, datasetIndex) => {
                 if (dataset.label === 'VFR Probability') {
                     const visible = new Set(visibleVfrIndices(dataset.data,
@@ -488,9 +518,20 @@ Chart.register({
                                 }
                             }
                         }
-                    })
+                    });
+
+                    const active = chart.tooltip?.getActiveElements()
+                        .find(item => item.datasetIndex === datasetIndex);
+                    if (active && !visible.has(active.index)) {
+                        const point = dataset.data[active.index];
+                        if (point && point.rating !== undefined) {
+                            const xPos = chart.scales.x.getPixelForValue(point.x);
+                            const yPos = chartArea.top + (chartArea.bottom - chartArea.top) * VFR_BADGE_Y_FRACTION;
+                            drawHoveredVfrBadge(ctx, point, xPos, yPos, metrics);
+                        }
+                    }
                 }
-            })
+            });
             
             // Restore the context state
             ctx.restore();
