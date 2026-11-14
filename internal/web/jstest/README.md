@@ -4,8 +4,10 @@ Deliberately outside `../frontend/`, because that whole directory is embedded in
 binary by `//go:embed all:frontend`. Test files living beside the modules were compiled in
 and served to browsers — and listed in the generated import map.
 
-`node --test` over the modules that import neither Chart.js nor the DOM: `time.js`,
-`barbs.js` and `viewport.js` (which needs only a two-line `window` stub).
+`node --test` covers the pure frontend modules, with small browser stubs where needed.
+`chart-tooltips.test.js` also captures the four chart configurations using lightweight
+Chart.js/DOM stubs, so an accidental per-chart animation override is caught. Actual
+animation and chart layout still need a browser check.
 
 ```bash
 make test          # both suites

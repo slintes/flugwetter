@@ -19,6 +19,25 @@ export const charts = {
     wind: null,
 };
 
+// One motion policy for every tooltip. A short ease keeps movement fluid without the
+// default 400ms lag behind the selected hour. Size changes must be immediate: Chart.js
+// replaces the text immediately, so easing width/height can clip the new contents.
+function tooltipOptions(options) {
+    return {
+        animation: { duration: 100, easing: 'easeOutCubic' },
+        animations: {
+            numbers: { type: 'number', properties: ['x', 'y', 'caretX', 'caretY'] },
+            size: { type: 'number', properties: ['width', 'height'], duration: 0 },
+            opacity: { duration: 100, easing: 'linear' }
+        },
+        ...options,
+        callbacks: {
+            title: context => new Date(context[0].parsed.x).toLocaleString(),
+            ...options.callbacks
+        }
+    };
+}
+
 export function initializeCharts() {
     const vfrCtx = document.getElementById('vfrChart').getContext('2d');
 
@@ -96,10 +115,8 @@ export function initializeCharts() {
             maintainAspectRatio: false,
             interaction: {
                 intersect: false,
-                // Match every other chart: the tooltip follows the nearest hourly value.
-                // If its badge was thinned out at this zoom, vfrText paints it while the
-                // tooltip is active so the selection remains visible.
-                mode: 'timeNearest'
+                // Only select badges that are actually drawn, including at coarse zoom.
+                mode: 'vfrVisible'
             },
             events: ['mousedown', 'mousemove', 'mouseup', 'click', 'mouseover', 'mouseout', 'wheel'],
             // No visible y axis here, so the space the other charts give their axes has to
@@ -122,10 +139,7 @@ export function initializeCharts() {
                 legend: {
                     display: false // No legend needed
                 },
-                tooltip: {
-                    // The text changes immediately when the hovered hour changes. Animating
-                    // the caret leaves it pointing at the previous badge in the meantime.
-                    animations: false,
+                tooltip: tooltipOptions({
                     // No colour swatch. It indents every line but is not counted when
                     // Chart.js sizes the box, so the longest line runs past the right edge
                     // and loses its last character -- which is the cost, the part worth
@@ -134,17 +148,9 @@ export function initializeCharts() {
                     // nothing anyway.
                     displayColors: false,
                     callbacks: {
-                        title: function(context) {
-                            // Display time in local timezone with date and time
-                            return new Date(context[0].parsed.x).toLocaleString();
-                        },
-                        // What the score lost and to what. Chart.js renders an array as
-                        // one line each.
-                        label: function(context) {
-                            return formatBreakdown(context.raw);
-                        }
+                        label: context => formatBreakdown(context.raw)
                     }
-                }
+                })
             }
         }
     });
@@ -270,12 +276,8 @@ export function initializeCharts() {
                         padding: 10
                     }
                 },
-                tooltip: {
+                tooltip: tooltipOptions({
                     callbacks: {
-                        title: function(context) {
-                            // Display time in local timezone with date and time
-                            return new Date(context[0].parsed.x).toLocaleString();
-                        },
                         label: function(context) {
                             const point = context.raw;
                             if (context.dataset.label === '2m Temperature (°C)') {
@@ -294,7 +296,7 @@ export function initializeCharts() {
                             return '';
                         }
                     }
-                }
+                })
             }
         }
     });
@@ -407,12 +409,8 @@ export function initializeCharts() {
                         padding: 10
                     }
                 },
-                tooltip: {
+                tooltip: tooltipOptions({
                     callbacks: {
-                        title: function(context) {
-                            // Display time in local timezone with date and time
-                            return new Date(context[0].parsed.x).toLocaleString();
-                        },
                         // One row per dataset, each reporting its own series.
                         //
                         // Visibility used to be appended to the cloud row, which read fine
@@ -463,7 +461,7 @@ export function initializeCharts() {
                             }
                         }
                     }
-                }
+                })
             }
         }
     });
@@ -587,12 +585,8 @@ export function initializeCharts() {
                         padding: 10
                     }
                 },
-                tooltip: {
+                tooltip: tooltipOptions({
                     callbacks: {
-                        title: function(context) {
-                            // Display time in local timezone with date and time
-                            return new Date(context[0].parsed.x).toLocaleString();
-                        },
                         label: function(context) {
                             const point = context.raw;
                             if (context.dataset.label === 'Wind Layers') {
@@ -609,7 +603,7 @@ export function initializeCharts() {
                             return '';
                         }
                     }
-                }
+                })
             }
         }
     });

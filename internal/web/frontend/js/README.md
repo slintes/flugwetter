@@ -7,8 +7,8 @@ Native ES modules. No bundler, no build step, no dependencies — `index.html` l
 |---|---|
 | `main.js` | Bootstrap. The only file that wires anything together. |
 | `api.js` | Fetching the forecast, mapping the payload into chart points, auto-refresh. |
-| `charts.js` | The shared time-axis config, the four chart constructors, the `charts` registry. |
-| `plugins.js` | Every custom Chart.js plugin, plus `drawWindBarb` and the shared `timeNearest` interaction mode. |
+| `charts.js` | The shared time-axis and tooltip config, the four chart constructors, the `charts` registry. |
+| `plugins.js` | Every custom Chart.js plugin, plus `drawWindBarb` and the `timeNearest` and `vfrVisible` interaction modes. |
 | `panzoom.js` | Hand-rolled pan/zoom, cross-chart sync, the initial range. |
 | `airports.js` | The picker, the shareable `?airport=` URL, the Leaflet map. |
 | `viewport.js` | Breakpoints, axis widths, VFR metrics, display density. |
@@ -18,7 +18,7 @@ Native ES modules. No bundler, no build step, no dependencies — `index.html` l
 | `bands.js` | The shaded bands behind the charts — night, civil twilight, ED-R activity, the home field's hours — and clipping them to what is on screen. |
 | `restrictions.js` | The airspace use plan: when restricted areas are active, for the charts and the map. |
 | `vfr-breakdown.js` | Formats the VFR rating's breakdown for the tooltip: what each factor was, and how it rated. |
-| `vfr-visible.js` | Selects the non-overlapping VFR badges for normal drawing; a hovered omitted badge is drawn on top. |
+| `vfr-visible.js` | Selects the non-overlapping VFR badges shared by drawing and tooltip interaction. |
 | `weather-icons.js` | WMO code → icon filename, including the `-night` variants. |
 
 ## Two dependency rules
@@ -33,6 +33,11 @@ dependent. `main.js` passes the reload in instead.
 reason.
 
 ## What is easy to break
+
+All four tooltips use `tooltipOptions` in `charts.js`: 100ms eased movement rather than
+Chart.js's default 400ms, with immediate resizing so changing text cannot outgrow the box.
+Interaction is separate from animation: VFR still selects only visible badges; the other
+charts correlate series by timestamp, not array index.
 
 `CLAUDE.md` in the repository root documents the load-bearing constraints in full — shared
 plot areas, `offset: false` on the time scale, the touch axis lock, the initial-zoom
